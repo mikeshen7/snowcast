@@ -1,0 +1,29 @@
+.resort-form {
+  border: 1px solid black;
+  border-radius: 3%;
+  padding: 5px;
+  width: 50%;
+  margin: auto;
+  margin-bottom: 20px;
+}
+
+.form-input {
+  margin-bottom: 5px;
+}
+
+.resorts-table {
+  margin: auto;
+  width: 1050px;
+}
+
+.resorts-cell {
+  border: 1px solid black;
+  width:200px;
+  height: 40px;
+  padding:5px;
+}
+
+.table-scrollable {
+  max-height: 25vh;
+  overflow: auto;
+}

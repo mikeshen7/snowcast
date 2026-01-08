@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Console</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
+    h1 { margin-bottom: 0.5rem; }
+    .card { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    label { display: inline-block; margin-right: 0.5rem; }
+    label > input,
+    label > select,
+    label > textarea {
+      margin-left: 0.35rem;
+    }
+    input[type="text"] { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+    button { padding: 0.4rem 0.9rem; border: none; border-radius: 4px; background: #007bff; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 0.6rem; border-bottom: 1px solid #eee; text-align: left; }
+    th { background: #fafafa; }
+    .status { margin-top: 1rem; font-size: 0.9rem; color: #444; }
+    .value-input { width: 100%; box-sizing: border-box; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab-btn { padding: 0.5rem 1rem; border: 1px solid #ccc; border-radius: 4px; background: #eee; cursor: pointer; color: #333; }
+    .tab-btn.active { background: #fff; border-bottom: 2px solid #007bff; color: #000; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .flex-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .flex-row label { margin-right: 0; }
+    label.query-group { display: flex; align-items: center; gap: 0.5rem; }
+    form { margin-top: 1rem; }
+    input[type="number"] { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+    select { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+    .form-actions { display: flex; gap: 0.5rem; align-items: center; }
+    .derived-meta { margin-top: 0.5rem; display: flex; gap: 1.5rem; font-weight: 600; }
+    .toast {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      min-width: 200px;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.8);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 999;
+    }
+    .toast.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .toast.error {
+      background: #c0392b;
+    }
+    .toast.success {
+      background: #2ecc71;
+    }
+    .hidden { display: none !important; }
+    .auth-gate { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .auth-gate input { min-width: 240px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Admin Console</h1>
+    <div id="authGate" class="auth-gate">
+      <label for="loginEmail">Admin Email:</label>
+      <input type="email" id="loginEmail" placeholder="name@example.com" />
+      <button id="sendLinkBtn">Send Login Link</button>
+      <div id="authStatus" class="status"></div>
+      <p style="margin:0.5rem 0 0;font-size:0.9rem;color:#555;">We’ll email a one-time link. Keep this page open, then click the link on the same browser.</p>
+    </div>
+    <div id="appContent" class="hidden">
+    <div class="status" id="sessionStatus" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+      <span></span>
+      <button id="logoutBtn" class="hidden">Logout</button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="dailyTab">Daily</button>
+      <button class="tab-btn" data-tab="hourlyTab">Hourly</button>
+      <button class="tab-btn" data-tab="locationsTab">Locations</button>
+      <button class="tab-btn" data-tab="usersTab">Users</button>
+      <button class="tab-btn" data-tab="apiKeysTab">API Keys</button>
+      <button class="tab-btn" data-tab="configTab">Config</button>
+    </div>
+
+    <div id="dailyTab" class="tab-panel active">
+      <h2>Daily Overview</h2>
+      <div class="flex-row">
+        <label>
+          Location:
+          <select id="dailyLocationSelect">
+            <option value="">Loading...</option>
+          </select>
+        </label>
+        <label>
+          Start Date:
+          <input type="date" id="dailyStartDate" />
+        </label>
+        <label>
+          End Date:
+          <input type="date" id="dailyEndDate" />
+        </label>
+        <label>
+          Mode:
+          <select id="dailyMode">
+            <option value="overview">Overview</option>
+            <option value="segments">Segments</option>
+          </select>
+        </label>
+        <button id="loadDailyBtn">Load</button>
+      </div>
+      <table id="dailyTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Snow (in)</th>
+            <th>High (°F)</th>
+            <th>Low (°F)</th>
+            <th>Avg Wind (mph)</th>
+            <th>Conditions</th>
+            <th>Precip (in)</th>
+            <th>Precip %</th>
+            <th>Cloud %</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="dailyStatus" class="status"></div>
+    </div>
+
+    <div id="hourlyTab" class="tab-panel">
+      <h2>Hourly Weather</h2>
+      <div class="flex-row">
+        <label>
+          Location:
+          <select id="hourlyLocationSelect">
+            <option value="">Loading...</option>
+          </select>
+        </label>
+        <label>
+          Start Date:
+          <input type="date" id="hourlyStartDate" />
+        </label>
+        <label>
+          End Date:
+          <input type="date" id="hourlyEndDate" />
+        </label>
+        <button id="loadHourlyBtn">Load</button>
+      </div>
+      <table id="hourlyTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Date/Time</th>
+            <th>Snow (in)</th>
+            <th>Temp (°F)</th>
+            <th>Wind (mph)</th>
+            <th>Feels Like</th>
+            <th>Conditions</th>
+            <th>Precip (in)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="hourlyStatus" class="status"></div>
+    </div>
+
+    <div id="locationsTab" class="tab-panel">
+      <h2>Locations</h2>
+      <h3>Add Location</h3>
+      <form id="locationForm" class="flex-row">
+        <label>Name<input type="text" id="newName" required /></label>
+        <label>Latitude<input type="number" step="any" id="newLat" required /></label>
+        <label>Longitude<input type="number" step="any" id="newLon" required /></label>
+        <label>Time Zone
+          <select id="newTz" required></select>
+        </label>
+        <label>Is Ski Resort?
+          <select id="newResort">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </label>
+        <input type="hidden" id="editingId" />
+        <div class="form-actions">
+          <button type="submit" id="saveLocationBtn">Add</button>
+          <button type="button" id="cancelEditBtn" style="display:none;">Cancel</button>
+        </div>
+        <div class="derived-meta">
+          <div>Country: <span id="derivedCountry">Unknown</span></div>
+          <div>Region: <span id="derivedRegion">-</span></div>
+        </div>
+      </form>
+
+      <form id="locationSearchForm" class="flex-row">
+        <label class="query-group">
+          Query:
+          <input type="text" id="locationQuery" placeholder="Name contains..." />
+          <button type="submit">Search</button>
+        </label>
+        <label>
+          Resort Only:
+          <select id="locationResort">
+            <option value="">All</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </label>
+      </form>
+      <table id="locationsTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Country</th>
+            <th>Region</th>
+            <th>Lat</th>
+            <th>Lon</th>
+            <th>TZ</th>
+            <th>Resort?</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="locationStatus" class="status"></div>
+    </div>
+
+    <div id="apiKeysTab" class="tab-panel">
+      <h2>API Keys</h2>
+      <p>Issue client API keys and manage rate limits. Copy new keys immediately&mdash;they are shown once.</p>
+      <form id="apiClientForm" class="flex-row">
+        <input type="hidden" id="apiClientEditingId" />
+        <label>Name<input type="text" id="apiClientName" required /></label>
+        <label>Email<input type="email" id="apiClientEmail" placeholder="client@example.com" /></label>
+        <label>Plan<input type="text" id="apiClientPlan" placeholder="free/pro/enterprise" /></label>
+        <label>Rate / min<input type="number" min="1" id="apiClientRateLimit" placeholder="60" /></label>
+        <label>Daily quota<input type="number" min="1" id="apiClientDailyQuota" placeholder="5000" /></label>
+        <label>Metadata
+          <input type="text" id="apiClientMetadata" placeholder='Optional JSON, e.g. {"notes":"beta"}' />
+        </label>
+        <label id="apiClientRegenerateRow" class="hidden">
+          <input type="checkbox" id="apiClientRegenerateKey" />
+          Regenerate API key
+        </label>
+        <div class="form-actions">
+          <button type="submit" id="apiClientSubmitBtn">Create API Key</button>
+          <button type="button" id="apiClientCancelBtn" style="display:none;">Cancel</button>
+          <button type="button" id="apiClientsRefreshBtn">Refresh</button>
+        </div>
+      </form>
+      <div id="apiClientKeyPanel" class="card" style="margin-top:1rem; display:none; background:#fffbe6; border:1px solid #f0d97a;">
+        <strong>API key (copy now, shown once):</strong>
+        <div style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+          <input type="text" id="apiClientKeyValue" readonly style="flex:1; min-width:240px; padding:0.4rem; border:1px solid #ccc; border-radius:4px;" />
+          <button type="button" id="apiClientCopyBtn">Copy</button>
+          <button type="button" id="apiClientHideKeyBtn">Hide</button>
+        </div>
+        <div style="margin-top:0.35rem; font-size:0.9rem; color:#666;">Store this key securely; it will not be shown again.</div>
+      </div>
+      <div id="apiClientResult" class="status"></div>
+      <table id="apiClientsTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Requests Today</th>
+            <th>Total Usage</th>
+            <th>Rate/Min Limit</th>
+            <th>Daily Limit</th>
+            <th>Plan</th>
+            <th>Status</th>
+            <th>Anomaly</th>
+            <th>Last Used</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="apiClientsStatus" class="status"></div>
+      <div id="apiClientAccessPanel" class="card" style="margin-top:1rem; display:none;">
+        <h3>Recent Access</h3>
+        <div id="apiClientAccessStatus" class="status"></div>
+        <ul id="apiClientAccessList"></ul>
+      </div>
+    </div>
+
+    <div id="configTab" class="tab-panel">
+      <h2>Config Settings</h2>
+      <div>
+        <button id="loadBtn">Reload Config</button>
+      </div>
+      <table id="configTable" style="display:none;">
+        <thead>
+          <tr><th>Key</th><th>Description</th><th>Value</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div id="usersTab" class="tab-panel">
+      <h2>Admin Users</h2>
+      <form id="adminUserForm" class="flex-row">
+        <input type="hidden" id="adminUserId" />
+        <label>Email<input type="email" id="adminUserEmail" required placeholder="admin@example.com" /></label>
+        <label>Name<input type="text" id="adminUserName" placeholder="Optional" /></label>
+        <label>Role
+          <select id="adminUserRoleSelect">
+            <option value="basic">Basic</option>
+            <option value="standard">Standard</option>
+            <option value="advanced">Advanced</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label>Backend Admin
+          <select id="adminUserAdminAccess">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="adminUserStatus">
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </label>
+        <label>Location Type
+          <select id="adminUserLocationAccess">
+            <option value="all">All Locations</option>
+            <option value="resort-only">Resort Only</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="submit" id="adminUserSubmitBtn">Save User</button>
+          <button type="button" id="adminUserCancelBtn" style="display:none;">Cancel</button>
+          <button type="button" id="adminUserRefreshBtn">Refresh</button>
+        </div>
+      </form>
+      <div id="adminUsersStatus" class="status"></div>
+      <table id="adminUsersTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Frontend Role</th>
+            <th>Backend Admin</th>
+            <th>Location Type</th>
+            <th>Status</th>
+            <th>Last Login</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+  <script>
+    const { DateTime } = luxon;
+    let sessionUser = null;
+    let sessionLocationAccess = 'all';
+    let hasLoadedApiClients = false;
+    const authGate = document.getElementById('authGate');
+    const appContent = document.getElementById('appContent');
+    const loginEmailInput = document.getElementById('loginEmail');
+    const sendLinkBtn = document.getElementById('sendLinkBtn');
+    const authStatus = document.getElementById('authStatus');
+    const sessionStatus = document.getElementById('sessionStatus');
+    const logoutBtn = document.getElementById('logoutBtn');
+    sendLinkBtn.addEventListener('click', requestMagicLink);
+    loginEmailInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        requestMagicLink();
+      }
+    });
+    logoutBtn.addEventListener('click', logout);
+
+    let defaultClientRateLimit = null;
+    let defaultClientDailyQuota = null;
+
+    const tabStorageKey = 'weather_admin_active_tab';
+    const storedTabId = localStorage.getItem(tabStorageKey);
+
+    // Tab handling
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    function activateTab(tabId) {
+      tabButtons.forEach((btn) => {
+        const isActive = btn.dataset.tab === tabId;
+        btn.classList.toggle('active', isActive);
+      });
+      tabPanels.forEach((panel) => {
+        panel.classList.toggle('active', panel.id === tabId);
+      });
+      if (tabId === 'apiKeysTab' && !hasLoadedApiClients) {
+        loadApiClients();
+      }
+      localStorage.setItem(tabStorageKey, tabId);
+    }
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activateTab(btn.dataset.tab);
+      });
+    });
+
+    // Config references
+    const table = document.getElementById('configTable');
+    const tbody = table.querySelector('tbody');
+    const statusEl = document.getElementById('status');
+    document.getElementById('loadBtn').addEventListener('click', () => loadConfig());
+    const timezoneSelect = document.getElementById('newTz');
+    const derivedCountryEl = document.getElementById('derivedCountry');
+    const derivedRegionEl = document.getElementById('derivedRegion');
+    const latInput = document.getElementById('newLat');
+    const lonInput = document.getElementById('newLon');
+    const DEFAULT_TIME_ZONE = 'America/Los_Angeles';
+    populateTimeZones();
+    latInput.addEventListener('blur', fetchDerivedMetadata);
+    lonInput.addEventListener('blur', fetchDerivedMetadata);
+
+    async function bootstrap() {
+      try {
+        await checkSession();
+      } catch (err) {
+        showLogin();
+      }
+    }
+
+    async function checkSession() {
+      const res = await fetch('/admin/auth/session', { credentials: 'include' });
+      if (!res.ok) {
+        showLogin();
+        return;
+      }
+      const data = await res.json();
+      if (data.authenticated) {
+        setAuthenticated(data.user);
+      } else {
+        showLogin();
+      }
+    }
+
+    async function requestMagicLink() {
+      const email = loginEmailInput.value.trim();
+      if (!email) {
+        authStatus.textContent = 'Email is required';
+        return;
+      }
+      authStatus.textContent = 'Sending link...';
+      sendLinkBtn.disabled = true;
+      try {
+        const res = await fetch('/admin/auth/request-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, redirectPath: '/admin.html' }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Could not send link');
+        }
+        authStatus.textContent = 'Check your email for the magic link. Use this browser to open it.';
+      } catch (err) {
+        authStatus.textContent = err.message;
+      } finally {
+        sendLinkBtn.disabled = false;
+      }
+    }
+
+    function setAuthenticated(user) {
+      sessionUser = user;
+      sessionLocationAccess = user?.locationAccess || 'all';
+      const roles = Array.isArray(user?.roles) ? user.roles : [];
+      const isBackendAdmin = Boolean(user?.adminAccess) || roles.includes('owner');
+      authGate.classList.add('hidden');
+      appContent.classList.remove('hidden');
+      const statusText = sessionStatus?.querySelector('span');
+      if (statusText) {
+        statusText.textContent = user?.email ? `Signed in as ${user.email}` : 'Signed in';
+      }
+      if (logoutBtn) {
+        logoutBtn.classList.remove('hidden');
+      }
+      showToast('Admin access granted');
+      if (isBackendAdmin) {
+        loadConfig();
+        loadApiClients();
+        loadAdminUsers();
+      } else {
+        hideTab('apiKeysTab');
+        hideTab('configTab');
+        hideTab('usersTab');
+        disableLocationWrites();
+      }
+      applyLocationAccessUI();
+      loadLocations();
+      loadHourlyLocationsDropdown();
+      if (storedTabId) {
+        activateTab(storedTabId);
+      } else {
+        activateTab('locationsTab');
+      }
+    }
+
+    function hideTab(tabId) {
+      const tabButton = Array.from(tabButtons).find((btn) => btn.dataset.tab === tabId);
+      const panel = document.getElementById(tabId);
+      if (tabButton) tabButton.style.display = 'none';
+      if (panel) panel.style.display = 'none';
+    }
+
+    function disableLocationWrites() {
+      if (locationForm) {
+        locationForm.classList.add('hidden');
+      }
+      const addHeading = document.querySelector('#locationsTab h3');
+      if (addHeading) addHeading.style.display = 'none';
+      const locationSearchForm = document.getElementById('locationSearchForm');
+      if (locationSearchForm) {
+        locationSearchForm.querySelectorAll('input, select, button').forEach((el) => {
+          el.disabled = false;
+        });
+      }
+    }
+
+    function applyLocationAccessUI() {
+      const resortLabel = locationResortSelect ? locationResortSelect.parentElement : null;
+      if (sessionLocationAccess === 'resort-only') {
+        if (locationResortSelect) {
+          locationResortSelect.value = 'true';
+        }
+        if (resortLabel) resortLabel.style.display = 'none';
+      } else {
+        if (resortLabel) resortLabel.style.display = '';
+      }
+    }
+
+    function showLogin() {
+      sessionUser = null;
+      hasLoadedApiClients = false;
+      authGate.classList.remove('hidden');
+      appContent.classList.add('hidden');
+      const statusText = sessionStatus?.querySelector('span');
+      if (statusText) {
+        statusText.textContent = '';
+      }
+      if (logoutBtn) {
+        logoutBtn.classList.add('hidden');
+      }
+    }
+
+    async function logout() {
+      await fetch('/admin/auth/logout', { method: 'POST', credentials: 'include' });
+      showLogin();
+      authStatus.textContent = 'Signed out';
+    }
+
+    async function loadConfig() {
+      setStatus('Loading...');
+      try {
+        const res = await authFetch('/admin/config');
+        const data = await res.json();
+        renderTable(data);
+        setStatus('Loaded ' + data.length + ' entries');
+        updateApiDefaultsFromConfig(data);
+      } catch (err) {
+        setStatus(err.message);
+      }
+    }
+
+
+    function renderTable(entries) {
+      tbody.innerHTML = '';
+      entries.forEach((entry) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${entry.key}</td>
+          <td>${entry.description || ''}</td>
+          <td><input class="value-input" type="text" value="${entry.value}" /></td>
+          <td><button>Save</button></td>
+        `;
+        const input = tr.querySelector('input');
+        const button = tr.querySelector('button');
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            const res = await authFetch('/admin/config/' + entry.key, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ value: parseValue(input.value) }),
+            });
+            if (!res.ok) {
+              throw new Error('Update failed: ' + res.status);
+            }
+            setStatus('Saved ' + entry.key);
+          } catch (err) {
+            setStatus(err.message);
+          } finally {
+            button.disabled = false;
+          }
+        });
+        tbody.appendChild(tr);
+      });
+      table.style.display = 'table';
+    }
+
+    function parseValue(val) {
+      if (val === 'true') return true;
+      if (val === 'false') return false;
+      const num = Number(val);
+      return Number.isNaN(num) ? val : num;
+    }
+
+    function setStatus(msg) {
+      statusEl.textContent = msg || '';
+    }
+
+    function updateApiDefaultsFromConfig(entries) {
+      if (!Array.isArray(entries)) return;
+      const rateEntry = entries.find((entry) => entry.key === 'API_CLIENT_RATE_LIMIT_DEFAULT');
+      const quotaEntry = entries.find((entry) => entry.key === 'API_CLIENT_DAILY_QUOTA_DEFAULT');
+
+      if (rateEntry && apiClientRateInput) {
+        const numericRate = Number(rateEntry.value);
+        if (Number.isFinite(numericRate)) {
+          defaultClientRateLimit = numericRate;
+          apiClientRateInput.placeholder = String(numericRate);
+        }
+      }
+
+      if (quotaEntry && apiClientDailyInput) {
+        const numericQuota = Number(quotaEntry.value);
+        if (Number.isFinite(numericQuota)) {
+          defaultClientDailyQuota = numericQuota;
+          apiClientDailyInput.placeholder = String(numericQuota);
+        }
+      }
+    }
+
+    // Location references
+    const locationTable = document.getElementById('locationsTable');
+    const locationBody = locationTable.querySelector('tbody');
+    const locationStatus = document.getElementById('locationStatus');
+    const locationForm = document.getElementById('locationForm');
+    const saveLocationBtn = document.getElementById('saveLocationBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const editingIdInput = document.getElementById('editingId');
+    const hourlySelect = document.getElementById('hourlyLocationSelect');
+    const hourlyStartInput = document.getElementById('hourlyStartDate');
+    const hourlyEndInput = document.getElementById('hourlyEndDate');
+    const hourlyStatus = document.getElementById('hourlyStatus');
+    const hourlyTable = document.getElementById('hourlyTable');
+    const hourlyTableBody = hourlyTable.querySelector('tbody');
+    const loadHourlyBtn = document.getElementById('loadHourlyBtn');
+    const dailySelect = document.getElementById('dailyLocationSelect');
+    const dailyStartInput = document.getElementById('dailyStartDate');
+    const dailyEndInput = document.getElementById('dailyEndDate');
+    const dailyStatus = document.getElementById('dailyStatus');
+    const dailyModeSelect = document.getElementById('dailyMode');
+    const dailyTable = document.getElementById('dailyTable');
+    const dailyTableBody = dailyTable.querySelector('tbody');
+    const loadDailyBtn = document.getElementById('loadDailyBtn');
+    const toastEl = document.getElementById('toast');
+    const apiClientForm = document.getElementById('apiClientForm');
+    const apiClientsRefreshBtn = document.getElementById('apiClientsRefreshBtn');
+    const apiClientResult = document.getElementById('apiClientResult');
+    const apiClientsTable = document.getElementById('apiClientsTable');
+    const apiClientsBody = apiClientsTable ? apiClientsTable.querySelector('tbody') : null;
+    const apiClientsStatus = document.getElementById('apiClientsStatus');
+    const apiClientEditingId = document.getElementById('apiClientEditingId');
+    const apiClientRegenerateRow = document.getElementById('apiClientRegenerateRow');
+    const apiClientRegenerateKey = document.getElementById('apiClientRegenerateKey');
+    const apiClientSubmitBtn = document.getElementById('apiClientSubmitBtn');
+    const apiClientCancelBtn = document.getElementById('apiClientCancelBtn');
+    const apiClientRateInput = document.getElementById('apiClientRateLimit');
+    const apiClientDailyInput = document.getElementById('apiClientDailyQuota');
+    const apiClientKeyPanel = document.getElementById('apiClientKeyPanel');
+    const apiClientKeyValue = document.getElementById('apiClientKeyValue');
+    const apiClientCopyBtn = document.getElementById('apiClientCopyBtn');
+    const apiClientHideKeyBtn = document.getElementById('apiClientHideKeyBtn');
+    const apiClientAccessPanel = document.getElementById('apiClientAccessPanel');
+    const apiClientAccessStatus = document.getElementById('apiClientAccessStatus');
+    const apiClientAccessList = document.getElementById('apiClientAccessList');
+    const adminUserForm = document.getElementById('adminUserForm');
+    const adminUserId = document.getElementById('adminUserId');
+    const adminUserEmail = document.getElementById('adminUserEmail');
+    const adminUserName = document.getElementById('adminUserName');
+    const adminUserRoleSelect = document.getElementById('adminUserRoleSelect');
+    const adminUserStatusSelect = document.getElementById('adminUserStatus');
+    const adminUserLocationAccess = document.getElementById('adminUserLocationAccess');
+    const adminUserAdminAccess = document.getElementById('adminUserAdminAccess');
+    const adminUserSubmitBtn = document.getElementById('adminUserSubmitBtn');
+    const adminUserCancelBtn = document.getElementById('adminUserCancelBtn');
+    const adminUserRefreshBtn = document.getElementById('adminUserRefreshBtn');
+    const adminUsersStatus = document.getElementById('adminUsersStatus');
+    const adminUsersTable = document.getElementById('adminUsersTable');
+    const adminUsersBody = adminUsersTable ? adminUsersTable.querySelector('tbody') : null;
+
+    document.getElementById('locationSearchForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadLocations();
+    });
+    const locationResortSelect = document.getElementById('locationResort');
+    if (locationResortSelect) {
+      locationResortSelect.addEventListener('change', () => loadLocations());
+    }
+    locationForm.addEventListener('submit', submitLocation);
+    cancelEditBtn.addEventListener('click', () => {
+      resetLocationForm();
+      setLocationStatus('Edit cancelled');
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted || performance.getEntriesByType('navigation')[0]?.type === 'reload') {
+        resetLocationForm();
+      }
+    });
+    setDefaultHourlyDates();
+    setDefaultDailyDates();
+    loadHourlyBtn.addEventListener('click', loadHourlyWeather);
+    loadDailyBtn.addEventListener('click', loadDailyWeather);
+    if (dailySelect) dailySelect.addEventListener('change', loadDailyWeather);
+    if (dailyStartInput) dailyStartInput.addEventListener('change', loadDailyWeather);
+    if (dailyEndInput) dailyEndInput.addEventListener('change', loadDailyWeather);
+    if (dailyModeSelect) dailyModeSelect.addEventListener('change', loadDailyWeather);
+    if (hourlySelect) hourlySelect.addEventListener('change', loadHourlyWeather);
+    if (hourlyStartInput) hourlyStartInput.addEventListener('change', loadHourlyWeather);
+    if (hourlyEndInput) hourlyEndInput.addEventListener('change', loadHourlyWeather);
+    if (apiClientForm) {
+      apiClientForm.addEventListener('submit', submitApiClient);
+    }
+    if (apiClientsRefreshBtn) {
+      apiClientsRefreshBtn.addEventListener('click', () => loadApiClients());
+    }
+    if (apiClientCancelBtn) {
+      apiClientCancelBtn.addEventListener('click', resetApiClientForm);
+    }
+    if (apiClientCopyBtn) {
+      apiClientCopyBtn.addEventListener('click', copyApiClientKey);
+    }
+    if (apiClientHideKeyBtn) {
+      apiClientHideKeyBtn.addEventListener('click', hideApiClientKeyPanel);
+    }
+    if (adminUserForm) {
+      adminUserForm.addEventListener('submit', submitAdminUser);
+    }
+    if (adminUserRefreshBtn) {
+      adminUserRefreshBtn.addEventListener('click', () => loadAdminUsers());
+    }
+    if (adminUserCancelBtn) {
+      adminUserCancelBtn.addEventListener('click', resetAdminUserForm);
+    }
+
+    async function loadLocations() {
+      const query = document.getElementById('locationQuery').value.trim();
+      const resort = document.getElementById('locationResort').value;
+      const params = new URLSearchParams();
+      if (query) params.set('q', query);
+      if (sessionLocationAccess === 'resort-only') {
+        params.set('isSkiResort', 'true');
+      } else if (resort) {
+        params.set('isSkiResort', resort);
+      }
+      setLocationStatus('Loading locations...');
+      try {
+        const res = await authFetch('/locations?' + params.toString());
+        if (!res.ok) throw new Error('Failed to load locations');
+        const data = await res.json();
+        renderLocations(data);
+        setLocationStatus(`Loaded ${data.length} locations`);
+      } catch (err) {
+        setLocationStatus(err.message);
+        showToast(err.message, true);
+      }
+    }
+
+    function renderLocations(locations) {
+      locationBody.innerHTML = '';
+      const sorted = [...locations].sort((a, b) => {
+        return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+      });
+      sorted.forEach((loc) => {
+        const isReadOnly = !(Array.isArray(sessionUser?.roles) && (sessionUser.roles.includes('owner') || sessionUser.roles.includes('admin')));
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${loc.name}</td>
+          <td>${loc.country || ''}</td>
+          <td>${loc.region || ''}</td>
+          <td>${loc.lat}</td>
+          <td>${loc.lon}</td>
+          <td>${loc.tz_iana || ''}</td>
+          <td>${loc.isSkiResort ? 'Yes' : 'No'}</td>
+          <td>
+            <button type="button" class="edit-btn" ${isReadOnly ? 'style="display:none;"' : ''}>Edit</button>
+            <button type="button" class="delete-btn" data-id="${loc.id}" ${isReadOnly ? 'style="display:none;"' : ''}>Delete</button>
+          </td>
+        `;
+        const editBtn = tr.querySelector('.edit-btn');
+        if (!isReadOnly && editBtn) {
+          editBtn.addEventListener('click', () => startEditLocation(loc));
+        }
+        const deleteBtn = tr.querySelector('.delete-btn');
+        if (!isReadOnly && deleteBtn) {
+          deleteBtn.addEventListener('click', () => deleteLocation(loc.id));
+        }
+        locationBody.appendChild(tr);
+      });
+      locationTable.style.display = locations.length ? 'table' : 'none';
+    }
+
+    async function deleteLocation(id) {
+      if (!id) return;
+      if (!confirm('Delete this location?')) return;
+      setLocationStatus('Deleting location...');
+      try {
+        const res = await authFetch('/locations/' + id, {
+          method: 'DELETE',
+        });
+        if (!res.ok) throw new Error('Delete failed');
+        setLocationStatus('Deleted location');
+        showToast('Location deleted');
+        loadLocations();
+      } catch (err) {
+        setLocationStatus(err.message);
+        showToast(err.message, true);
+      }
+    }
+
+    async function submitLocation(event) {
+      event.preventDefault();
+      const editingId = editingIdInput.value;
+      const payload = {
+        name: document.getElementById('newName').value.trim(),
+        lat: Number(latInput.value),
+        lon: Number(lonInput.value),
+        tz_iana: timezoneSelect.value,
+        isSkiResort: document.getElementById('newResort').value === 'true',
+      };
+      if (!payload.name || Number.isNaN(payload.lat) || Number.isNaN(payload.lon) || !payload.tz_iana) {
+        return setLocationStatus('All required fields must be filled');
+      }
+      setLocationStatus(editingId ? 'Saving location...' : 'Creating location...');
+      try {
+        const res = await authFetch(editingId ? '/locations/' + editingId : '/locations', {
+          method: editingId ? 'PUT' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Save failed');
+        }
+        setLocationStatus(editingId ? 'Location updated' : 'Location created');
+        showToast(editingId ? 'Location updated successfully.' : 'Location created successfully.');
+        resetLocationForm();
+        loadLocations();
+      } catch (err) {
+        setLocationStatus(err.message);
+        showToast(err.message, true);
+      }
+    }
+
+    function startEditLocation(location) {
+      document.getElementById('newName').value = location.name || '';
+      latInput.value = location.lat ?? '';
+      lonInput.value = location.lon ?? '';
+      setTimeZoneValue(location.tz_iana);
+      document.getElementById('newResort').value = location.isSkiResort ? 'true' : 'false';
+      editingIdInput.value = location.id;
+      saveLocationBtn.textContent = 'Save';
+      cancelEditBtn.style.display = 'inline-block';
+      setLocationStatus(`Editing ${location.name}`);
+      derivedCountryEl.textContent = location.country || 'Unknown';
+      derivedRegionEl.textContent = location.region || '-';
+    }
+
+    function resetLocationForm() {
+      locationForm.reset();
+      document.getElementById('newResort').value = 'false';
+      setTimeZoneValue(DEFAULT_TIME_ZONE);
+      editingIdInput.value = '';
+      saveLocationBtn.textContent = 'Add';
+      cancelEditBtn.style.display = 'none';
+      derivedCountryEl.textContent = 'Unknown';
+      derivedRegionEl.textContent = '-';
+    }
+
+    function setLocationStatus(msg) {
+      locationStatus.textContent = msg || '';
+    }
+
+    async function loadApiClients() {
+      if (!apiClientsStatus) return;
+      apiClientsStatus.textContent = 'Loading API clients...';
+      try {
+        const res = await authFetch('/admin/api-clients');
+        if (!res.ok) throw new Error('Failed to load API clients');
+        const data = await res.json();
+        renderApiClients(data || []);
+        hasLoadedApiClients = true;
+        apiClientsStatus.textContent = `Loaded ${data?.length || 0} clients`;
+      } catch (err) {
+        apiClientsStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function renderApiClients(clients) {
+      if (!apiClientsBody) return;
+      apiClientsBody.innerHTML = '';
+      (clients || []).forEach((client) => {
+        const toggleLabel = client.status === 'active' ? 'Revoke' : 'Activate';
+        const tr = document.createElement('tr');
+        const anomalyText = client.accessAnomaly ? 'Yes' : 'No';
+        const anomalyDetail = client.lastAccessAlertAt ? `<div style="font-size:0.85rem;color:#555;">${formatDateTimeLocal(client.lastAccessAlertAt)}</div>` : '';
+        tr.innerHTML = `
+          <td>${client.name || ''}</td>
+          <td>${client.contactEmail || ''}</td>
+          <td>${client.currentDayUsage ?? 0}</td>
+          <td>${client.totalUsage ?? 0}</td>
+          <td>${client.rateLimitPerMin ?? ''}</td>
+          <td>${client.dailyQuota ?? ''}</td>
+          <td>${client.plan || ''}</td>
+          <td>${client.status || ''}</td>
+          <td>${anomalyText}${anomalyDetail}</td>
+          <td>${formatDateTimeLocal(client.lastUsedAt)}</td>
+          <td>${formatDateTimeLocal(client.createdAt)}</td>
+          <td>
+            <button type="button" class="api-edit-btn" data-id="${client._id}">Edit</button>
+            <button type="button" class="api-toggle-btn" data-id="${client._id}">${toggleLabel}</button>
+            <button type="button" class="api-delete-btn" data-id="${client._id}">Delete</button>
+            <button type="button" class="api-access-btn" data-id="${client._id}">Access</button>
+          </td>
+        `;
+        const editBtn = tr.querySelector('.api-edit-btn');
+        if (editBtn) {
+          editBtn.addEventListener('click', () => startEditApiClient(client));
+        }
+        const toggleBtn = tr.querySelector('.api-toggle-btn');
+        if (toggleBtn) {
+          toggleBtn.addEventListener('click', () => toggleApiClient(client._id));
+        }
+        const deleteBtn = tr.querySelector('.api-delete-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', () => deleteApiClient(client));
+        }
+        const accessBtn = tr.querySelector('.api-access-btn');
+        if (accessBtn) {
+          accessBtn.addEventListener('click', () => loadApiClientAccess(client));
+        }
+        apiClientsBody.appendChild(tr);
+      });
+      if (apiClientsTable) {
+        apiClientsTable.style.display = clients?.length ? 'table' : 'none';
+      }
+    }
+
+    async function submitApiClient(event) {
+      event.preventDefault();
+      if (!apiClientsStatus) return;
+      const nameInput = document.getElementById('apiClientName');
+      const emailInput = document.getElementById('apiClientEmail');
+      const planInput = document.getElementById('apiClientPlan');
+      const rateLimitInput = document.getElementById('apiClientRateLimit');
+      const dailyQuotaInput = document.getElementById('apiClientDailyQuota');
+      const metadataInput = document.getElementById('apiClientMetadata');
+      const editingId = apiClientEditingId?.value;
+      const isEditing = Boolean(editingId);
+      const payload = {};
+      const name = nameInput?.value.trim();
+      if (!name) {
+        apiClientResult.textContent = 'Name is required';
+        return;
+      }
+      payload.name = name;
+      const email = emailInput?.value.trim();
+      if (email) payload.contactEmail = email;
+      const plan = planInput?.value.trim();
+      if (plan) payload.plan = plan;
+      const rateLimit = Number(rateLimitInput?.value);
+      if (!Number.isNaN(rateLimit) && rateLimit > 0) {
+        payload.rateLimitPerMin = rateLimit;
+      }
+      const dailyQuota = Number(dailyQuotaInput?.value);
+      if (!Number.isNaN(dailyQuota) && dailyQuota > 0) {
+        payload.dailyQuota = dailyQuota;
+      }
+      const metadataValue = metadataInput?.value.trim();
+      const metadata = parseMetadataInput(metadataValue);
+      if (metadata) {
+        payload.metadata = metadata;
+      }
+      if (isEditing) {
+        payload.regenerateKey = Boolean(apiClientRegenerateKey?.checked);
+      }
+      apiClientResult.textContent = '';
+      apiClientsStatus.textContent = isEditing ? 'Saving client...' : 'Creating API key...';
+      try {
+        const endpoint = isEditing ? `/admin/api-clients/${editingId}` : '/admin/api-clients';
+        const method = isEditing ? 'PUT' : 'POST';
+        const res = await authFetch(endpoint, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to save API client');
+        }
+        const data = await res.json();
+        const apiKey = data?.apiKey;
+        if (apiKey) {
+          showApiClientKey(apiKey);
+          apiClientResult.textContent = 'API key created (copy now, shown once)';
+        } else {
+          apiClientResult.textContent = isEditing ? 'Client updated' : 'Client created';
+        }
+        showToast(isEditing ? 'Client updated' : 'API key created');
+        resetApiClientForm();
+        loadApiClients();
+      } catch (err) {
+        apiClientResult.textContent = err.message;
+        showToast(err.message, true);
+      } finally {
+        apiClientsStatus.textContent = '';
+      }
+    }
+
+    async function toggleApiClient(clientId) {
+      if (!clientId || !apiClientsStatus) return;
+      apiClientsStatus.textContent = 'Updating client...';
+      try {
+        const res = await authFetch(`/admin/api-clients/${clientId}/toggle`, {
+          method: 'POST',
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to update client');
+        }
+        showToast('Client updated');
+        loadApiClients();
+      } catch (err) {
+        apiClientsStatus.textContent = err.message;
+        showToast(err.message, true);
+      } finally {
+        setTimeout(() => {
+          apiClientsStatus.textContent = '';
+        }, 1500);
+      }
+    }
+
+    async function deleteApiClient(client) {
+      if (!client || !apiClientsStatus) return;
+      if (!confirm(`Delete API client "${client.name || client._id}"? This cannot be undone.`)) {
+        return;
+      }
+      apiClientsStatus.textContent = 'Deleting client...';
+      try {
+        const res = await authFetch(`/admin/api-clients/${client._id}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to delete client');
+        }
+        showToast('Client deleted');
+        resetApiClientForm();
+        loadApiClients();
+      } catch (err) {
+        apiClientsStatus.textContent = err.message;
+        showToast(err.message, true);
+      } finally {
+        setTimeout(() => {
+          apiClientsStatus.textContent = '';
+        }, 1500);
+      }
+    }
+
+    function showApiClientKey(key) {
+      if (!apiClientKeyPanel || !apiClientKeyValue) return;
+      apiClientKeyValue.value = key;
+      apiClientKeyPanel.style.display = 'block';
+    }
+
+    function hideApiClientKeyPanel() {
+      if (!apiClientKeyPanel || !apiClientKeyValue) return;
+      apiClientKeyValue.value = '';
+      apiClientKeyPanel.style.display = 'none';
+    }
+
+    async function copyApiClientKey() {
+      if (!apiClientKeyValue) return;
+      const key = apiClientKeyValue.value;
+      if (!key) return;
+      try {
+        await navigator.clipboard.writeText(key);
+        showToast('Copied API key');
+      } catch (err) {
+        showToast('Copy failed', true);
+      }
+    }
+
+    async function loadApiClientAccess(client) {
+      if (!client || !client._id || !apiClientAccessPanel || !apiClientAccessStatus || !apiClientAccessList) return;
+      apiClientAccessStatus.textContent = 'Loading access...';
+      apiClientAccessList.innerHTML = '';
+      apiClientAccessPanel.style.display = 'block';
+      try {
+        const res = await authFetch(`/admin/api-clients/${client._id}/access`);
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to load access logs');
+        }
+        const data = await res.json();
+        const logs = data?.logs || [];
+        if (!logs.length) {
+          apiClientAccessStatus.textContent = 'No recent access records';
+          return;
+        }
+        const items = logs.map((log) => {
+          const ts = formatDateTimeLocal(log.createdAt);
+          const host = log.host || '-';
+          const ip = log.ip || '-';
+          const origin = log.origin || '-';
+          return `<li>${ts} — host: ${host} — ip: ${ip} — origin: ${origin}</li>`;
+        });
+        apiClientAccessList.innerHTML = items.join('');
+        apiClientAccessStatus.textContent = `Showing ${logs.length} recent access records`;
+      } catch (err) {
+        apiClientAccessStatus.textContent = err.message;
+      }
+    }
+
+    function startEditApiClient(client) {
+      if (!client || !apiClientForm) return;
+      if (apiClientEditingId) {
+        apiClientEditingId.value = client._id;
+      }
+      setInputValue('apiClientName', client.name || '');
+      setInputValue('apiClientEmail', client.contactEmail || '');
+      setInputValue('apiClientPlan', client.plan || '');
+      setInputValue('apiClientRateLimit', client.rateLimitPerMin ?? '');
+      setInputValue('apiClientDailyQuota', client.dailyQuota ?? '');
+      setInputValue('apiClientMetadata', stringifyMetadata(client.metadata));
+      if (apiClientSubmitBtn) {
+        apiClientSubmitBtn.textContent = 'Save Changes';
+      }
+      if (apiClientCancelBtn) {
+        apiClientCancelBtn.style.display = 'inline-block';
+      }
+      if (apiClientRegenerateRow) {
+        apiClientRegenerateRow.classList.remove('hidden');
+      }
+      if (apiClientRegenerateKey) {
+        apiClientRegenerateKey.checked = false;
+      }
+      apiClientResult.textContent = `Editing ${client.name || client._id}`;
+    }
+
+    function resetApiClientForm() {
+      if (!apiClientForm) return;
+      apiClientForm.reset();
+      if (apiClientEditingId) {
+        apiClientEditingId.value = '';
+      }
+      if (apiClientSubmitBtn) {
+        apiClientSubmitBtn.textContent = 'Create API Key';
+      }
+      if (apiClientCancelBtn) {
+        apiClientCancelBtn.style.display = 'none';
+      }
+      if (apiClientRegenerateRow) {
+        apiClientRegenerateRow.classList.add('hidden');
+      }
+      if (apiClientRegenerateKey) {
+        apiClientRegenerateKey.checked = false;
+      }
+      apiClientResult.textContent = '';
+    }
+
+    function parseMetadataInput(value) {
+      if (!value) return undefined;
+      try {
+        return JSON.parse(value);
+      } catch (err) {
+        return { notes: value };
+      }
+    }
+
+    function stringifyMetadata(metadata) {
+      if (!metadata || typeof metadata !== 'object') {
+        return '';
+      }
+      try {
+        return JSON.stringify(metadata);
+      } catch (err) {
+        return '';
+      }
+    }
+
+    function setInputValue(id, value) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.value = value ?? '';
+      }
+    }
+
+    function getSelectedLocationTimezone(selectEl) {
+      if (!selectEl) return DEFAULT_TIME_ZONE;
+      const option = selectEl.options?.[selectEl.selectedIndex];
+      return option?.dataset?.tz || DEFAULT_TIME_ZONE;
+    }
+
+    async function fetchDerivedMetadata() {
+      const lat = parseFloat(latInput.value);
+      const lon = parseFloat(lonInput.value);
+      if (Number.isNaN(lat) || Number.isNaN(lon)) {
+        derivedCountryEl.textContent = 'Unknown';
+        derivedRegionEl.textContent = '-';
+        return;
+      }
+      try {
+        const res = await authFetch(`/locations/lookup?lat=${lat}&lon=${lon}`);
+        if (!res.ok) throw new Error('Lookup failed');
+        const data = await res.json();
+        derivedCountryEl.textContent = data.country || 'Unknown';
+        derivedRegionEl.textContent = data.region || '-';
+      } catch (err) {
+        derivedCountryEl.textContent = 'Unknown';
+        derivedRegionEl.textContent = '-';
+      }
+    }
+
+    async function loadHourlyLocationsDropdown() {
+      try {
+        const res = await authFetch('/locations?limit=200');
+        if (!res.ok) throw new Error('Failed to load locations');
+        const data = await res.json();
+        const filtered = (data || []).filter((loc) => {
+          if (sessionLocationAccess === 'resort-only') return Boolean(loc.isSkiResort);
+          return true;
+        });
+        const sorted = filtered.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+        populateLocationSelect(hourlySelect, sorted);
+        populateLocationSelect(dailySelect, sorted);
+      } catch (err) {
+        hourlyStatus.textContent = err.message;
+        dailyStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function populateLocationSelect(select, locations) {
+      select.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Select a location';
+      select.appendChild(placeholder);
+      (locations || []).forEach((loc) => {
+        const option = document.createElement('option');
+        option.value = loc.id;
+        option.textContent = loc.name || 'Unnamed';
+        if (loc.tz_iana) {
+          option.dataset.tz = loc.tz_iana;
+        }
+        select.appendChild(option);
+      });
+    }
+
+    async function loadAdminUsers() {
+      if (!adminUsersStatus) return;
+      adminUsersStatus.textContent = 'Loading admins...';
+      try {
+        const res = await authFetch('/admin/users');
+        if (!res.ok) throw new Error('Failed to load admins');
+        const data = await res.json();
+        renderAdminUsers(data || []);
+        adminUsersStatus.textContent = `Loaded ${data?.length || 0} admins`;
+      } catch (err) {
+        adminUsersStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function renderAdminUsers(users) {
+      if (!adminUsersBody) return;
+      adminUsersBody.innerHTML = '';
+      (users || []).forEach((user) => {
+        const isOwner = Array.isArray(user.roles) && user.roles.includes('owner');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${user.email || ''}</td>
+          <td>${user.name || ''}</td>
+          <td>${Array.isArray(user.roles) ? user.roles.join(', ') : ''}</td>
+          <td>${user.adminAccess || isOwner ? 'Yes' : 'No'}</td>
+          <td>${user.locationAccess || 'all'}</td>
+          <td>${user.status || ''}</td>
+          <td>${formatDateTimeLocal(user.lastLoginAt)}</td>
+          <td>${formatDateTimeLocal(user.createdAt)}</td>
+          <td>
+            <button type="button" class="admin-edit-btn" data-id="${user._id}" ${isOwner ? 'disabled' : ''}>Edit</button>
+            <button type="button" class="admin-toggle-btn" data-id="${user._id}" data-status="${user.status}" ${isOwner ? 'disabled' : ''}>
+              ${user.status === 'active' ? 'Suspend' : 'Activate'}
+            </button>
+            <button type="button" class="admin-delete-btn" data-id="${user._id}" ${isOwner ? 'disabled' : ''}>Delete</button>
+          </td>
+        `;
+        const editBtn = tr.querySelector('.admin-edit-btn');
+        if (editBtn && !isOwner) {
+          editBtn.addEventListener('click', () => startEditAdmin(user));
+        }
+        const toggleBtn = tr.querySelector('.admin-toggle-btn');
+        if (toggleBtn && !isOwner) {
+          toggleBtn.addEventListener('click', () => toggleAdminStatus(user));
+        }
+        const deleteBtn = tr.querySelector('.admin-delete-btn');
+        if (deleteBtn && !isOwner) {
+          deleteBtn.addEventListener('click', () => deleteAdmin(user));
+        }
+        adminUsersBody.appendChild(tr);
+      });
+      if (adminUsersTable) {
+        adminUsersTable.style.display = users?.length ? 'table' : 'none';
+      }
+    }
+
+    async function submitAdminUser(event) {
+      event.preventDefault();
+      if (!adminUsersStatus) return;
+      const editingId = adminUserId?.value;
+      const email = adminUserEmail?.value.trim();
+      const name = adminUserName?.value.trim();
+      const isOwner = adminUserForm?.dataset?.isOwner === 'true';
+      const roles = adminUserRoleSelect ? [adminUserRoleSelect.value] : ['basic'];
+      const status = adminUserStatusSelect ? adminUserStatusSelect.value : 'active';
+      const locationAccess = adminUserLocationAccess ? adminUserLocationAccess.value : 'all';
+      const adminAccess = adminUserAdminAccess?.value === 'true';
+      if (!email) {
+        adminUsersStatus.textContent = 'Email is required';
+        return;
+      }
+      adminUsersStatus.textContent = editingId ? 'Saving admin...' : 'Creating admin...';
+      try {
+        const endpoint = editingId ? `/admin/users/${editingId}` : '/admin/users';
+        const method = editingId ? 'PUT' : 'POST';
+        const payload = editingId
+          ? buildAdminUpdatePayload({ name, roles, status, locationAccess, adminAccess, isOwner })
+          : { email, name, roles, locationAccess, adminAccess };
+        const res = await authFetch(endpoint, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to save admin');
+        }
+        adminUsersStatus.textContent = editingId ? 'Admin updated' : 'Admin created';
+        showToast(editingId ? 'Admin updated' : 'Admin created');
+        resetAdminUserForm();
+        loadAdminUsers();
+      } catch (err) {
+        adminUsersStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    async function toggleAdminStatus(user) {
+      if (!user || !user._id) return;
+      if (!confirm(`Set ${user.email} to ${user.status === 'active' ? 'suspended' : 'active'}?`)) return;
+      adminUsersStatus.textContent = 'Updating admin...';
+      try {
+        const res = await authFetch(`/admin/users/${user._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: user.status === 'active' ? 'suspended' : 'active' }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to update admin');
+        }
+        adminUsersStatus.textContent = 'Admin updated';
+        showToast('Admin updated');
+        loadAdminUsers();
+      } catch (err) {
+        adminUsersStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function startEditAdmin(user) {
+      if (!user) return;
+      const isOwner = Array.isArray(user.roles) && user.roles.includes('owner');
+      if (adminUserId) adminUserId.value = user._id;
+      if (adminUserEmail) {
+        adminUserEmail.value = user.email || '';
+        adminUserEmail.disabled = true;
+      }
+      if (adminUserName) adminUserName.value = user.name || '';
+      if (adminUserRoleSelect) {
+        adminUserRoleSelect.value = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'basic';
+      }
+      if (adminUserStatusSelect) {
+        adminUserStatusSelect.value = user.status || 'active';
+      }
+      if (adminUserLocationAccess) {
+        adminUserLocationAccess.value = user.locationAccess || 'all';
+      }
+      if (adminUserAdminAccess) {
+        adminUserAdminAccess.value = user.adminAccess || isOwner ? 'true' : 'false';
+      }
+      if (adminUserForm) {
+        adminUserForm.dataset.isOwner = isOwner ? 'true' : 'false';
+      }
+      setOwnerFormState(isOwner);
+      if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
+      if (adminUserCancelBtn) adminUserCancelBtn.style.display = 'inline-block';
+      adminUsersStatus.textContent = `Editing ${user.email || ''}`;
+    }
+
+    function resetAdminUserForm() {
+      if (adminUserForm) adminUserForm.reset();
+      if (adminUserId) adminUserId.value = '';
+      if (adminUserEmail) adminUserEmail.disabled = false;
+      if (adminUserRoleSelect) adminUserRoleSelect.value = 'basic';
+      if (adminUserStatusSelect) adminUserStatusSelect.value = 'active';
+      if (adminUserLocationAccess) adminUserLocationAccess.value = 'all';
+      if (adminUserAdminAccess) adminUserAdminAccess.value = 'false';
+      if (adminUserForm) delete adminUserForm.dataset.isOwner;
+      setOwnerFormState(false);
+      if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
+      if (adminUserCancelBtn) adminUserCancelBtn.style.display = 'none';
+      adminUsersStatus.textContent = '';
+    }
+
+    function buildAdminUpdatePayload({ name, roles, status, locationAccess, adminAccess, isOwner }) {
+      if (isOwner) {
+        return { name };
+      }
+      return { name, roles, status, locationAccess, adminAccess };
+    }
+
+    function setOwnerFormState(isOwner) {
+      if (adminUserRoleSelect) adminUserRoleSelect.disabled = isOwner;
+      if (adminUserAdminAccess) adminUserAdminAccess.disabled = isOwner;
+      if (adminUserStatusSelect) adminUserStatusSelect.disabled = isOwner;
+      if (adminUserLocationAccess) adminUserLocationAccess.disabled = isOwner;
+      if (isOwner) {
+        if (adminUserRoleSelect) adminUserRoleSelect.value = 'owner';
+        if (adminUserAdminAccess) adminUserAdminAccess.value = 'true';
+        if (adminUserStatusSelect) adminUserStatusSelect.value = 'active';
+        if (adminUserLocationAccess) adminUserLocationAccess.value = 'all';
+      }
+    }
+
+    async function deleteAdmin(user) {
+      if (!user || !user._id) return;
+      if (!confirm(`Delete admin ${user.email}? This cannot be undone.`)) return;
+      adminUsersStatus.textContent = 'Deleting admin...';
+      try {
+        const res = await authFetch(`/admin/users/${user._id}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to delete admin');
+        }
+        adminUsersStatus.textContent = 'Admin deleted';
+        showToast('Admin deleted');
+        resetAdminUserForm();
+        loadAdminUsers();
+      } catch (err) {
+        adminUsersStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function setDefaultHourlyDates() {
+      const now = new Date();
+      hourlyStartInput.value = formatDateInput(now);
+      hourlyEndInput.value = formatDateInput(now);
+    }
+
+    function setDefaultDailyDates() {
+      const now = new Date();
+      dailyStartInput.value = formatDateInput(now);
+      const end = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+      dailyEndInput.value = formatDateInput(end);
+    }
+
+    function formatDateInput(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function computeDayOffsets() {
+      const tz = getSelectedLocationTimezone(hourlySelect);
+      return computeOffsetsForRange(hourlyStartInput.value, hourlyEndInput.value, tz);
+    }
+
+    async function loadHourlyWeather() {
+      const locationId = hourlySelect.value;
+      if (!locationId) {
+        hourlyStatus.textContent = 'Select a location first';
+        return;
+      }
+      const range = computeDayOffsets();
+      const params = new URLSearchParams({ locationId });
+      params.set('daysBack', range.daysBack);
+      params.set('daysForward', range.daysForward);
+      if (range.startEpoch != null) params.set('startDateEpoch', range.startEpoch);
+      if (range.endEpoch != null) params.set('endDateEpoch', range.endEpoch);
+      hourlyStatus.textContent = 'Loading hourly data...';
+      try {
+        const res = await authFetch('/weather/hourly?' + params.toString());
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to load hourly data');
+        }
+        const data = await res.json();
+        renderHourlyTable(data?.data || []);
+        hourlyStatus.textContent = `Loaded ${data?.count || 0} rows`;
+      } catch (err) {
+        hourlyStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function renderHourlyTable(rows) {
+      const tz = getSelectedLocationTimezone(hourlySelect);
+      hourlyTableBody.innerHTML = '';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatLocationDateTime(row, tz)}</td>
+          <td>${formatNumberValue(row.snow, 2)}</td>
+          <td>${formatNumberValue(row.temp, 1)}</td>
+          <td>${formatWindMph(row.windspeed)}</td>
+          <td>${formatNumberValue(row.feelsLike, 1)}</td>
+          <td>${row.conditions || ''}</td>
+          <td>${formatNumberValue(row.precip, 2)}</td>
+        `;
+        hourlyTableBody.appendChild(tr);
+      });
+      hourlyTable.style.display = rows.length ? 'table' : 'none';
+    }
+
+    async function loadDailyWeather() {
+      const locationId = dailySelect.value;
+      if (!locationId) {
+        dailyStatus.textContent = 'Select a location first';
+        return;
+      }
+      const range = computeDailyOffsets();
+      const params = new URLSearchParams({ locationId });
+      params.set('daysBack', range.daysBack);
+      params.set('daysForward', range.daysForward);
+      if (range.startEpoch != null) params.set('startDateEpoch', range.startEpoch);
+      if (range.endEpoch != null) params.set('endDateEpoch', range.endEpoch);
+      const mode = dailyModeSelect.value || 'overview';
+      const endpoint = mode === 'segments' ? '/weather/daily/segments' : '/weather/daily/overview';
+      dailyStatus.textContent = 'Loading daily data...';
+      try {
+        const res = await authFetch(endpoint + '?' + params.toString());
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to load daily data');
+        }
+        const data = await res.json();
+        const rows = data?.days || data?.data || [];
+        renderDailyTable(rows);
+        dailyStatus.textContent = `Loaded ${rows.length} rows`;
+      } catch (err) {
+        dailyStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function computeDailyOffsets() {
+      const tz = getSelectedLocationTimezone(dailySelect);
+      return computeOffsetsForRange(dailyStartInput.value, dailyEndInput.value, tz);
+    }
+
+    function renderDailyTable(rows) {
+      dailyTableBody.innerHTML = '';
+      rows.forEach((row) => {
+        const dateLabel = formatDayLabel(row.date || row.day || '');
+        if (Array.isArray(row.segments) && row.segments.length) {
+          row.segments.forEach((segment) => {
+            appendDailyRow(segment, `${dateLabel} (${segment.label})`);
+          });
+        } else {
+          appendDailyRow(row, dateLabel);
+        }
+      });
+      dailyTable.style.display = dailyTableBody.children.length ? 'table' : 'none';
+    }
+
+    function appendDailyRow(source, label) {
+      const conditions = source.summary || source.conditions || source.representativeHour?.conditions || '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${label}</td>
+        <td>${formatNumberValue(source.snowTotal, 2)}</td>
+        <td>${formatNumberValue(source.high ?? source.maxTemp, 1)}</td>
+        <td>${formatNumberValue(source.low ?? source.minTemp, 1)}</td>
+        <td>${formatWindMph(source.avgWindspeed)}</td>
+        <td>${conditions}</td>
+        <td>${formatNumberValue(source.precipTotal, 2)}</td>
+        <td>${formatPercentValue(source.avgPrecipProb)}</td>
+        <td>${formatPercentValue(source.avgCloudCover)}</td>
+      `;
+      dailyTableBody.appendChild(tr);
+    }
+
+    function formatDayLabel(dateStr) {
+      if (!dateStr) return '';
+      const dt = DateTime.fromISO(dateStr);
+      if (!dt.isValid) return dateStr;
+      return `${dt.toFormat('EEE')} ${dt.toFormat('yyyy-LL-dd')}`;
+    }
+
+    async function authFetch(url, options = {}) {
+      const merged = Object.assign({}, options, { credentials: 'include' });
+      const res = await fetch(url, merged);
+      if (res.status === 401 || res.status === 403) {
+        handleUnauthorized();
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    function handleUnauthorized() {
+      showLogin();
+      authStatus.textContent = 'Session expired. Request a new link.';
+    }
+
+    function showToast(message, isError = false) {
+      if (!toastEl) return;
+      toastEl.textContent = message;
+      toastEl.classList.remove('show', 'error', 'success');
+      toastEl.classList.add(isError ? 'error' : 'success');
+      requestAnimationFrame(() => {
+        toastEl.classList.add('show');
+      });
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => {
+        toastEl.classList.remove('show');
+      }, 3500);
+    }
+
+    function populateTimeZones() {
+      const zones = readAllTimeZones();
+      const offsets = new Map();
+      zones.forEach((zone) => {
+        const info = buildTimeZoneInfo(zone);
+        if (!offsets.has(info.offsetMinutes)) {
+          offsets.set(info.offsetMinutes, info);
+        }
+      });
+      const defaultInfo = buildTimeZoneInfo(DEFAULT_TIME_ZONE);
+      offsets.set(defaultInfo.offsetMinutes, defaultInfo); // ensure default uses its zone
+
+      const entries = [...offsets.values()].sort((a, b) => a.offsetMinutes - b.offsetMinutes);
+      timezoneSelect.innerHTML = entries
+        .map((entry) => `<option value="${entry.zone}">${entry.label}</option>`)
+        .join('');
+      timezoneSelect.value = DEFAULT_TIME_ZONE;
+    }
+
+    function readAllTimeZones() {
+      if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+        try {
+          const zones = Intl.supportedValuesOf('timeZone');
+          if (zones?.length) return zones;
+        } catch (err) {
+          // ignore
+        }
+      }
+      return [
+        'America/Los_Angeles',
+        'America/Denver',
+        'America/Chicago',
+        'America/New_York',
+        'Europe/London',
+        'Europe/Paris',
+        'Asia/Tokyo',
+        'Australia/Sydney',
+      ];
+    }
+
+    function buildTimeZoneInfo(zone) {
+      const { label, offsetMinutes } = computeOffsetLabel(zone);
+      return { zone, label, offsetMinutes };
+    }
+
+    function computeOffsetLabel(zone) {
+      try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: zone,
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZoneName: 'shortOffset',
+        });
+        const parts = formatter.formatToParts(new Date());
+        const tzName = parts.find((part) => part.type === 'timeZoneName')?.value || 'GMT';
+        const match = tzName.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/i);
+        let offsetMinutes = 0;
+        let label = tzName;
+        if (match) {
+          const sign = match[1] === '-' ? -1 : 1;
+          const hours = parseInt(match[2], 10);
+          const minutes = parseInt(match[3] || '0', 10);
+          offsetMinutes = sign * (hours * 60 + minutes);
+          const hh = String(hours).padStart(2, '0');
+          const mm = String(minutes).padStart(2, '0');
+          label = `GMT${sign === -1 ? '-' : '+'}${hh}:${mm}`;
+        }
+        return { label: `(${label}) ${zone}`, offsetMinutes };
+      } catch (err) {
+        return { label: zone, offsetMinutes: 0 };
+      }
+    }
+
+    function setTimeZoneValue(value) {
+      const target = value || DEFAULT_TIME_ZONE;
+      if (![...timezoneSelect.options].some((opt) => opt.value === target)) {
+        const info = buildTimeZoneInfo(target);
+        const opt = document.createElement('option');
+        opt.value = target;
+        opt.textContent = info.label;
+        timezoneSelect.appendChild(opt);
+      }
+      timezoneSelect.value = target;
+    }
+
+    function computeOffsetsForRange(startValue, endValue, timeZone) {
+      const zone = timeZone || DEFAULT_TIME_ZONE;
+      const now = DateTime.now().setZone(zone).startOf('day');
+      const startDt = startValue ? DateTime.fromISO(startValue, { zone }).startOf('day') : null;
+      const endDt = endValue ? DateTime.fromISO(endValue, { zone }).endOf('day') : null;
+      const daysBack = startDt ? Math.max(0, Math.round(now.diff(startDt, 'days').days)) : 0;
+      const daysForward = endDt ? Math.max(0, Math.round(endDt.diff(now, 'days').days)) : 0;
+      return {
+        daysBack,
+        daysForward,
+        startEpoch: startDt ? startDt.toUTC().toMillis() : undefined,
+        endEpoch: endDt ? endDt.toUTC().toMillis() : undefined,
+      };
+    }
+
+    function formatNumberValue(value, digits = 1) {
+      if (value === undefined || value === null || Number.isNaN(Number(value))) {
+        return '';
+      }
+      return Number(value).toFixed(digits);
+    }
+
+    function formatPercentValue(value) {
+      if (value === undefined || value === null || Number.isNaN(Number(value))) {
+        return '';
+      }
+      return `${Number(value).toFixed(0)}%`;
+    }
+
+    function formatWindMph(value) {
+      if (value === undefined || value === null || Number.isNaN(Number(value))) return '';
+      const mph = Number(value) * 0.621371; // km/h to mph
+      return `${mph.toFixed(1)} mph`;
+    }
+
+    function formatDateTimeLocal(value) {
+      if (!value) return '-';
+      const dt = new Date(value);
+      if (Number.isNaN(dt.getTime())) {
+        return '-';
+      }
+      return dt.toLocaleString();
+    }
+
+    function formatLocationDateTime(row, timeZone) {
+      if (!row) return '';
+      const epoch = row.dateTimeEpoch ?? row.dateTime ? Date.parse(row.dateTime) : null;
+      if (!epoch) return row.dateTime || '';
+      const tz = timeZone || getSelectedLocationTimezone(hourlySelect) || DEFAULT_TIME_ZONE;
+      return DateTime.fromMillis(epoch, { zone: tz }).toFormat('yyyy-LL-dd HH:mm');
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>
