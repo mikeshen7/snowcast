@@ -189,6 +189,18 @@ select option {
   font-weight: 600;
 }
 
+.profile-unit-toggle {
+  background: rgba(13, 27, 42, 0.08);
+}
+
+.profile-unit-toggle button {
+  color: var(--ink-700);
+}
+
+.profile-unit-toggle button.active {
+  color: var(--ink-900);
+}
+
 
 .auth-form {
   display: flex;
@@ -535,6 +547,8 @@ select option {
 
 .menu-links {
   justify-content: flex-start;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .menu-link {
@@ -545,6 +559,18 @@ select option {
   border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.menu-link.text-link {
+  border-radius: 6px;
+  padding: 4px 4px;
+  border: none;
+  background: transparent;
+}
+
+.menu-link.text-link.active {
+  background: transparent;
+  color: var(--snow-50);
 }
 
 .menu-link.active {

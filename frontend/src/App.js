@@ -195,7 +195,6 @@ function App() {
   const [powAlertsStatus, setPowAlertsStatus] = useState('');
   const [powAlertsLoading, setPowAlertsLoading] = useState(false);
   const [powAlertCheckResult, setPowAlertCheckResult] = useState('');
-  const [powAlertCheckDetails, setPowAlertCheckDetails] = useState([]);
   const [newAlert, setNewAlert] = useState({
     locationId: '',
     windowDays: 3,
@@ -345,7 +344,7 @@ function App() {
   }, [authStatus, setUnits]);
 
   useEffect(() => {
-    if (authStatus !== 'authenticated' || activeView !== 'profile') {
+    if (authStatus !== 'authenticated' || activeView !== 'pow-alerts') {
       return;
     }
     let isMounted = true;
@@ -629,11 +628,15 @@ function App() {
       const result = await checkPowAlerts();
       const results = Array.isArray(result?.results) ? result.results : [];
       const sentCount = results.filter((item) => item.sent).length || 0;
-      setPowAlertCheckResult(sentCount ? `Sent ${sentCount} alert(s).` : 'No alerts sent.');
-      setPowAlertCheckDetails(results);
+      setPowAlertCheckResult(sentCount ? 'Pow! Check email!' : 'Sorry, no pow for you.');
+      setTimeout(() => {
+        setPowAlertCheckResult('');
+      }, 10000);
     } catch (error) {
       setPowAlertCheckResult(error.message || 'Unable to run alerts.');
-      setPowAlertCheckDetails([]);
+      setTimeout(() => {
+        setPowAlertCheckResult('');
+      }, 10000);
     }
   };
 
@@ -674,27 +677,6 @@ function App() {
           aria-label={isFavoriteSelected ? 'Remove favorite' : 'Add favorite'}
         >
           {isFavoriteSelected ? '★' : '☆'}
-        </button>
-      </div>
-    </div>
-  );
-
-  const controlsBlock = (
-    <div className="control control-compact">
-      <div className="unit-toggle" role="group" aria-label="Units">
-        <button
-          type="button"
-          className={units === 'imperial' ? 'active' : ''}
-          onClick={() => setUnits('imperial')}
-        >
-          Imperial
-        </button>
-        <button
-          type="button"
-          className={units === 'metric' ? 'active' : ''}
-          onClick={() => setUnits('metric')}
-        >
-          Metric
         </button>
       </div>
     </div>
@@ -838,21 +820,28 @@ function App() {
                 <div className="mobile-section menu-links">
                   <button
                     type="button"
-                    className={`menu-link ${activeView === 'calendar' ? 'active' : ''}`}
+                    className={`menu-link text-link ${activeView === 'calendar' ? 'active' : ''}`}
                     onClick={() => setActiveView('calendar')}
                   >
                     Forecast
                   </button>
                   <button
                     type="button"
-                    className={`menu-link ${activeView === 'profile' ? 'active' : ''}`}
+                    className={`menu-link text-link ${activeView === 'profile' ? 'active' : ''}`}
                     onClick={() => setActiveView('profile')}
                     disabled={!isSignedIn}
                   >
                     Profile
                   </button>
+                  <button
+                    type="button"
+                    className={`menu-link text-link ${activeView === 'pow-alerts' ? 'active' : ''}`}
+                    onClick={() => setActiveView('pow-alerts')}
+                    disabled={!isSignedIn}
+                  >
+                    Pow Alerts
+                  </button>
                 </div>
-                <div className="mobile-section">{controlsBlock}</div>
                 {showAuthControls && authBlock ? <div className="mobile-section">{authBlock}</div> : null}
               </div>
             </div>
@@ -1178,7 +1167,8 @@ function App() {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : null}
+          {activeView === 'profile' ? (
             <div className="profile-page">
               <div className="profile-card">
                 <div className="profile-header">
@@ -1194,7 +1184,7 @@ function App() {
                       <span>{user?.email || '-'}</span>
                     </div>
                     <div className="profile-row">
-                      <span className="profile-label">Role</span>
+                      <span className="profile-label">Subscription</span>
                       <span>{(user?.roles || []).join(', ') || '-'}</span>
                     </div>
                     <div className="profile-row">
@@ -1212,28 +1202,55 @@ function App() {
                         ))}
                       </select>
                     </div>
+                    <div className="profile-row">
+                      <span className="profile-label">Units</span>
+                      <div className="unit-toggle profile-unit-toggle" role="group" aria-label="Units">
+                        <button
+                          type="button"
+                          className={units === 'imperial' ? 'active' : ''}
+                          onClick={() => setUnits('imperial')}
+                        >
+                          Imperial
+                        </button>
+                        <button
+                          type="button"
+                          className={units === 'metric' ? 'active' : ''}
+                          onClick={() => setUnits('metric')}
+                        >
+                          Metric
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="profile-empty">
+                    <p>Please sign in to view your profile.</p>
+                    {loginButton}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+          {activeView === 'pow-alerts' ? (
+            <div className="profile-page">
+              <div className="profile-card">
+                <div className="profile-header">
+                  <h2>Pow Alerts</h2>
+                  <button type="button" className="ghost" onClick={() => setActiveView('calendar')}>
+                    Back to forecast
+                  </button>
+                </div>
+                {isSignedIn ? (
+                  <div className="profile-content">
                     <div className="profile-alerts">
                       <div className="profile-alerts-header">
-                        <div>
-                          <h3>Pow Alerts</h3>
-                        </div>
+                        <div />
                         <button type="button" className="profile-action" onClick={handleCheckPow}>
                           Check Pow Now
                         </button>
                       </div>
                       {powAlertsStatus ? <div className="profile-alerts-status">{powAlertsStatus}</div> : null}
                       {powAlertCheckResult ? <div className="profile-alerts-status">{powAlertCheckResult}</div> : null}
-                      {powAlertCheckDetails.length ? (
-                        <div className="profile-alerts-debug">
-                          {powAlertCheckDetails.map((detail) => (
-                            <div key={detail.id} className="alert-debug-row">
-                              <span>{detail.id}</span>
-                              <span>{detail.sent ? 'sent' : detail.reason || 'skipped'}</span>
-                              {detail.triggerDay?.dateKey ? <span>{detail.triggerDay.dateKey}</span> : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
                       {powAlertsLoading ? (
                         <div className="profile-alerts-status">Loading alerts…</div>
                       ) : (
@@ -1312,13 +1329,13 @@ function App() {
                   </div>
                 ) : (
                   <div className="profile-empty">
-                    <p>Please sign in to view your profile.</p>
+                    <p>Please sign in to view your alerts.</p>
                     {loginButton}
                   </div>
                 )}
               </div>
             </div>
-          )}
+          ) : null}
 
           {loadingForecast ? <div className="loading">Loading forecast…</div> : null}
         </section>
