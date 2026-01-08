@@ -279,7 +279,7 @@ function getEmailIconDataUrl(filename) {
 }
 
 function getEmailLogoDataUrl() {
-  const logoPath = path.join(__dirname, '..', '..', 'frontend', 'public', 'logo192.png');
+  const logoPath = path.join(__dirname, '..', '..', 'frontend', 'public', 'snowcast.png');
   return getEmailAssetDataUrl('logo', logoPath);
 }
 
@@ -366,7 +366,7 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
   const iconBase = embedImages ? '' : (logoBase ? `${logoBase.replace(/\/$/, '')}/email-icons` : '');
   const logoUrl = embedImages
     ? getEmailLogoDataUrl()
-    : (logoBase ? `${logoBase.replace(/\/$/, '')}/logo192.png` : '');
+    : (logoBase ? `${logoBase.replace(/\/$/, '')}/snowcast.png` : '');
   const weeks = buildWeeks({ days, timeZone: location?.tz_iana || 'UTC' });
   const weekRows = weeks.map((week) => {
     const cells = week.map(({ day }) => {
