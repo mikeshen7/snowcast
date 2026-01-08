@@ -421,9 +421,6 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
                     <span style="color:#c7332d;">${formatTempValue(day.maxTemp)}</span>
                     <span style="color:#1c6fd2;margin-left:4px;">${formatTempValue(day.minTemp)}</span>
                   </div>
-                  <div style="margin-top:4px;font-size:11px;font-weight:600;color:#415a77;line-height:1.2;">
-                    ${formatWindMph(day.avgWindspeed)}
-                  </div>
                 </td>
               </tr>
             </table>
@@ -444,8 +441,8 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
           .sc-week, .sc-week tbody, .sc-week tr, .sc-week td { display: block !important; width: 100% !important; }
           .sc-cell { padding: 6px 0 !important; }
           .sc-tile { height: auto !important; padding: 12px !important; }
-          .sc-inner, .sc-inner tr, .sc-inner td { display: block !important; width: 100% !important; text-align: left !important; }
-          .sc-icon { margin: 0 0 6px 0 !important; }
+          .sc-inner, .sc-inner tr, .sc-inner td { display: block !important; width: 100% !important; text-align: center !important; }
+          .sc-icon { margin: 6px auto 6px auto !important; }
           .sc-temps { margin-top: 6px !important; }
         }
       </style>
