@@ -777,8 +777,15 @@ function App() {
       <header className="app-header">
         <div className="brand">
           <div className="brand-row">
-            <img src={snowcastLogo} alt="Snowcast" className="brand-logo" />
-            <div className="brand-mark">Snowcast</div>
+            <button
+              type="button"
+              className="brand-link"
+              onClick={() => setActiveView('calendar')}
+              aria-label="Back to forecast"
+            >
+              <img src={snowcastLogo} alt="Snowcast" className="brand-logo" />
+              <div className="brand-mark">Snowcast</div>
+            </button>
             {resortPicker}
           </div>
         </div>

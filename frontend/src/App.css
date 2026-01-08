@@ -46,6 +46,17 @@
   gap: 12px;
 }
 
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
 .brand-mark {
   font-size: 20px;
   letter-spacing: 0.12em;
