@@ -37,7 +37,7 @@ npm install
   - `BACKEND_OWNER_EMAIL` to allow creating the owner when they request a link.
 - Brevo HTTP API: set `BREVO_API_KEY`, `BREVO_API_ENDPOINT_URL`, and `SMTP_FROM`; the app sends magic links via Brevo.
 - Flow: enter admin email on `/admin.html` → backend emails a one-time link → clicking it sets an HttpOnly admin session cookie and redirects back. Logout clears the cookie. Admin requests rely on the session, not bearer tokens.
-- Roles: owner is set by `BACKEND_OWNER_EMAIL`. Users have a single role (`basic`, `standard`, `advanced`, `admin`, or `owner`) which affects frontend access. Backend admin access is controlled by the Backend Admin flag (or owner).
+- Roles: owner is set by `BACKEND_OWNER_EMAIL`. Users have a single role (`level1`, `level2`, `level3`, `admin`, or `owner`) which affects frontend access. Backend admin access is controlled by the Backend Admin flag (or owner).
 - Admin rate limit (requests per minute) is configurable via Config UI (`RATE_LIMIT_ADMIN` key).
   - Session/magic token lifetimes are configurable via Config UI (`TTL_BACKEND_SESSION_MINUTES`, `TTL_FRONTEND_SESSION_MINUTES`, `TTL_AUTH_TOKEN_MINUTES`).
 

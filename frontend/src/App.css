@@ -130,6 +130,40 @@
   gap: 8px;
 }
 
+.app-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13, 27, 42, 0.95);
+  color: var(--snow-50);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 20px -12px rgba(7, 15, 26, 0.6);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-toast.warning {
+  background: rgba(184, 90, 15, 0.95);
+}
+
+.toast-action {
+  border: none;
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--snow-50);
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .resort-favorite {
   border: 1px solid rgba(248, 251, 255, 0.3);
   background: rgba(255, 255, 255, 0.08);
@@ -210,6 +244,41 @@ select option {
 
 .profile-unit-toggle button.active {
   color: var(--ink-900);
+}
+
+.discount-form {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.discount-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-600);
+}
+
+.discount-form input {
+  min-width: 180px;
+  background: rgba(13, 27, 42, 0.04);
+  color: var(--ink-900);
+  border: 1px solid rgba(13, 27, 42, 0.12);
+}
+
+.discount-form button {
+  border: none;
+  background: var(--storm-600);
+  color: var(--snow-50);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 

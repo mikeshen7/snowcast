@@ -6,6 +6,7 @@ const adminUserDb = require('../models/adminUserDb');
 const frontendMagicTokenDb = require('../models/frontendMagicTokenDb');
 const { sendEmail } = require('./email');
 const appConfig = require('./appConfig');
+const { getRoleLabels, getFavoriteLimits, getHourlyAccess, getPowAlertLimits, getCheckPowAccess, normalizeRole } = require('./roleConfig');
 
 const COOKIE_NAME = 'frontendSession';
 const { config } = require('../config');
@@ -74,8 +75,8 @@ async function sendClosedSignupEmail(email) {
   const subject = 'Weather Forecast access request';
   const text = [
     'Thanks for your interest!',
-    'The app is currently in development and not accepting new users.',
-    'Please check back later.',
+    'The website is currently under development and accepting new users.',
+    'Please check back later for access.',
   ].join('\n');
   await sendEmail({ to: email, subject, text });
 }
@@ -118,7 +119,7 @@ async function handleRequestMagicLink(request, response) {
     user = await adminUserDb.create({
       email,
       status: 'active',
-      roles: ['basic'],
+      roles: ['level1'],
       locationAccess: 'all',
       adminAccess: false,
     });
@@ -199,9 +200,20 @@ async function handleSessionStatus(request, response) {
     response.clearCookie(COOKIE_NAME);
     return response.status(403).send({ authenticated: false });
   }
+  const roleLabels = getRoleLabels();
+  const roleLimits = getFavoriteLimits();
+  const roleHourly = getHourlyAccess();
+  const rolePowAlerts = getPowAlertLimits();
+  const roleCheckPow = getCheckPowAccess();
+  const normalizedRoles = (user.roles || []).map((role) => normalizeRole(role));
   return response.status(200).send({
     authenticated: true,
-    user: { email: user.email, roles: user.roles || [], locationAccess: user.locationAccess || 'all' },
+    user: { email: user.email, roles: normalizedRoles, locationAccess: user.locationAccess || 'all' },
+    roleLabels,
+    roleLimits,
+    roleHourly,
+    rolePowAlerts,
+    roleCheckPow,
   });
 }
 

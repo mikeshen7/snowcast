@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 const collectionName = 'adminUsers';
-const allowedRoles = ['owner', 'admin', 'basic', 'standard', 'advanced'];
+const allowedRoles = ['owner', 'admin', 'level1', 'level2', 'level3'];
 const allowedLocationAccess = ['all', 'resort-only'];
 
 const adminUserSchema = new Schema(
@@ -15,7 +15,7 @@ const adminUserSchema = new Schema(
     roles: {
       type: [String],
       enum: allowedRoles,
-      default: ['basic'],
+      default: ['level1'],
       set: (values) => {
         const arr = Array.isArray(values) ? values : [values];
         const filtered = arr

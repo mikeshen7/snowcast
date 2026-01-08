@@ -16,10 +16,10 @@ const COOKIE_SECURE = config.backend.cookieSecure;
 const BOOTSTRAP_EMAIL = config.backend.ownerEmail;
 const OWNER_ROLE = 'owner';
 const ADMIN_ROLE = 'admin';
-const BASIC_ROLE = 'basic';
-const STANDARD_ROLE = 'standard';
-const ADVANCED_ROLE = 'advanced';
-const ALLOWED_ROLES = new Set([OWNER_ROLE, ADMIN_ROLE, BASIC_ROLE, STANDARD_ROLE, ADVANCED_ROLE]);
+const LEVEL1_ROLE = 'level1';
+const LEVEL2_ROLE = 'level2';
+const LEVEL3_ROLE = 'level3';
+const ALLOWED_ROLES = new Set([OWNER_ROLE, ADMIN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE]);
 
 function getSessionTtlMinutes() {
   return Number(appConfig.values().TTL_BACKEND_SESSION_MINUTES) || 60;
@@ -283,7 +283,7 @@ module.exports = {
   getAdminUserFromRequest,
   OWNER_ROLE,
   ADMIN_ROLE,
-  BASIC_ROLE,
-  STANDARD_ROLE,
-  ADVANCED_ROLE,
+  LEVEL1_ROLE,
+  LEVEL2_ROLE,
+  LEVEL3_ROLE,
 };

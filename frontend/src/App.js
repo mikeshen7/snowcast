@@ -23,6 +23,7 @@ import {
   updatePowAlert,
   deletePowAlert,
   checkPowAlerts,
+  redeemDiscountCode,
 } from './api';
 import {
   buildCalendarRange,
@@ -34,11 +35,29 @@ import {
 
 const ROLE_WINDOWS = {
   guest: { back: 0, forward: 1 },
-  basic: { back: 3, forward: 3 },
-  standard: { back: 7, forward: 7 },
-  advanced: null,
+  level1: { back: 3, forward: 3 },
+  level2: { back: 7, forward: 7 },
+  level3: null,
   admin: null,
   owner: null,
+};
+
+const DEFAULT_ROLE_LABELS = {
+  guest: 'Guest',
+  level1: 'Starter',
+  level2: 'Plus',
+  level3: 'Pro',
+  admin: 'Admin',
+  owner: 'Owner',
+};
+
+const DEFAULT_ROLE_LIMITS = {
+  guest: 0,
+  level1: 1,
+  level2: 3,
+  level3: -1,
+  admin: -1,
+  owner: -1,
 };
 
 const UNIT_STORAGE_KEY = 'snowcast-units';
@@ -47,10 +66,17 @@ const HOME_RESORT_KEY = 'snowcast-home-resort';
 const WIND_MPH_PER_KMH = 0.621371;
 const CM_PER_INCH = 2.54;
 
+function normalizeRole(role) {
+  if (role === 'basic') return 'level1';
+  if (role === 'standard') return 'level2';
+  if (role === 'advanced') return 'level3';
+  return role;
+}
+
 function resolveRole(user) {
   if (!user) return 'guest';
-  const role = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'basic';
-  return role;
+  const role = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1';
+  return normalizeRole(role);
 }
 
 function formatTemp(value, units) {
@@ -195,6 +221,16 @@ function App() {
   const [powAlertsStatus, setPowAlertsStatus] = useState('');
   const [powAlertsLoading, setPowAlertsLoading] = useState(false);
   const [powAlertCheckResult, setPowAlertCheckResult] = useState('');
+  const [roleLabels, setRoleLabels] = useState(DEFAULT_ROLE_LABELS);
+  const [roleLimits, setRoleLimits] = useState(DEFAULT_ROLE_LIMITS);
+  const [roleHourly, setRoleHourly] = useState({});
+  const [rolePowAlerts, setRolePowAlerts] = useState({});
+  const [roleCheckPow, setRoleCheckPow] = useState({});
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastKind, setToastKind] = useState('info');
+  const [toastAction, setToastAction] = useState(null);
+  const [discountCode, setDiscountCode] = useState('');
+  const [discountStatus, setDiscountStatus] = useState('');
   const [newAlert, setNewAlert] = useState({
     locationId: '',
     windowDays: 3,
@@ -264,6 +300,21 @@ function App() {
         if (!isMounted) return;
         if (data?.authenticated) {
           setUser(data.user);
+          if (data.roleLabels && typeof data.roleLabels === 'object') {
+            setRoleLabels((prev) => ({ ...prev, ...data.roleLabels }));
+          }
+          if (data.roleLimits && typeof data.roleLimits === 'object') {
+            setRoleLimits((prev) => ({ ...prev, ...data.roleLimits }));
+          }
+          if (data.roleHourly && typeof data.roleHourly === 'object') {
+            setRoleHourly((prev) => ({ ...prev, ...data.roleHourly }));
+          }
+          if (data.rolePowAlerts && typeof data.rolePowAlerts === 'object') {
+            setRolePowAlerts((prev) => ({ ...prev, ...data.rolePowAlerts }));
+          }
+          if (data.roleCheckPow && typeof data.roleCheckPow === 'object') {
+            setRoleCheckPow((prev) => ({ ...prev, ...data.roleCheckPow }));
+          }
           setAuthStatus('authenticated');
         } else {
           setUser(null);
@@ -546,22 +597,54 @@ function App() {
   };
   const isSignedIn = authStatus === 'authenticated';
   const isFavoriteSelected = favorites.includes(String(selectedLocationId || ''));
+  const favoriteLimit = roleLimits[role] ?? 0;
+  const canAddFavorite = favoriteLimit < 0 || favorites.length < favoriteLimit;
+  const favoriteLimitReached = !isFavoriteSelected && !canAddFavorite;
+
+  const applyFavoriteLimit = (list, limit, pinnedId) => {
+    const unique = Array.from(new Set((list || []).map((id) => String(id)).filter(Boolean)));
+    if (limit < 0) return unique;
+    const pinned = pinnedId ? unique.filter((id) => id === String(pinnedId)) : [];
+    const rest = unique.filter((id) => !pinned.includes(id));
+    const merged = pinned.length ? [...pinned, ...rest] : rest;
+    return merged.slice(0, limit);
+  };
 
   useEffect(() => {
     if (!homeResortId) return;
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      next.add(String(homeResortId));
-      return Array.from(next);
-    });
-  }, [homeResortId]);
+    setFavorites((prev) => applyFavoriteLimit([...prev, String(homeResortId)], favoriteLimit, homeResortId));
+  }, [homeResortId, favoriteLimit]);
 
   const handleAddFavorite = () => {
     if (!selectedLocationId) return;
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      next.add(String(selectedLocationId));
-      return Array.from(next);
+    if (favoriteLimitReached) return;
+    setFavorites((prev) => applyFavoriteLimit([...prev, String(selectedLocationId)], favoriteLimit, homeResortId));
+  };
+
+  const showToast = (message, kind = 'info', duration = 6000, action = null) => {
+    setToastMessage(message);
+    setToastKind(kind);
+    setToastAction(action);
+    if (duration > 0) {
+      setTimeout(() => {
+        setToastMessage('');
+        setToastAction(null);
+      }, duration);
+    }
+  };
+
+  const handleFavoriteAttempt = () => {
+    if (!favoriteLimitReached) {
+      handleAddFavorite();
+      return;
+    }
+    showToast('Upgrade your subscription to add more favorites.', 'warning', 6000, {
+      label: 'Manage',
+      onClick: () => {
+        setActiveView('subscription');
+        setToastMessage('');
+        setToastAction(null);
+      },
     });
   };
 
@@ -573,10 +656,29 @@ function App() {
     setFavorites((prev) => prev.filter((favId) => String(favId) !== String(id)));
   };
 
+  useEffect(() => {
+    const limited = applyFavoriteLimit(favorites, favoriteLimit, homeResortId);
+    if (limited.length !== favorites.length || limited.some((id, index) => id !== favorites[index])) {
+      setFavorites(limited);
+    }
+  }, [favorites, favoriteLimit, homeResortId]);
+
   const handleCreatePowAlert = async (event) => {
     event.preventDefault();
     if (!newAlert.locationId) {
       setPowAlertsStatus('Select a resort for the alert.');
+      return;
+    }
+    const powAlertLimit = rolePowAlerts[role];
+    if (Number.isFinite(powAlertLimit) && powAlertLimit >= 0 && powAlerts.length >= powAlertLimit) {
+      showToast('Upgrade your subscription to add more pow alerts.', 'warning', 6000, {
+        label: 'Manage',
+        onClick: () => {
+          setActiveView('subscription');
+          setToastMessage('');
+          setToastAction(null);
+        },
+      });
       return;
     }
     try {
@@ -599,6 +701,27 @@ function App() {
       setPowAlertsStatus(error.message || 'Unable to create alert.');
     }
   };
+
+  const handleRedeemDiscount = async (event) => {
+    event.preventDefault();
+    const code = discountCode.trim();
+    if (!code) {
+      setDiscountStatus('Enter a discount code.');
+      return;
+    }
+    setDiscountStatus('');
+    try {
+      const payload = await redeemDiscountCode(code);
+      if (payload?.roles) {
+        setUser((prev) => (prev ? { ...prev, roles: payload.roles } : prev));
+      }
+      setDiscountStatus('Discount applied.');
+      setDiscountCode('');
+    } catch (error) {
+      setDiscountStatus(error.message || 'Unable to apply code.');
+    }
+  };
+
 
   const handleToggleAlert = async (alert) => {
     try {
@@ -625,6 +748,17 @@ function App() {
 
   const handleCheckPow = async () => {
     try {
+      if (!roleCheckPow[role]) {
+        showToast('Upgrade your subscription to run Check Pow Now.', 'warning', 6000, {
+          label: 'Manage',
+          onClick: () => {
+            setActiveView('subscription');
+            setToastMessage('');
+            setToastAction(null);
+          },
+        });
+        return;
+      }
       const result = await checkPowAlerts();
       const results = Array.isArray(result?.results) ? result.results : [];
       const sentCount = results.filter((item) => item.sent).length || 0;
@@ -673,8 +807,9 @@ function App() {
         <button
           type="button"
           className={`resort-favorite ${isFavoriteSelected ? 'active' : ''}`}
-          onClick={() => (isFavoriteSelected ? handleRemoveFavorite(selectedLocationId) : handleAddFavorite())}
+          onClick={() => (isFavoriteSelected ? handleRemoveFavorite(selectedLocationId) : handleFavoriteAttempt())}
           aria-label={isFavoriteSelected ? 'Remove favorite' : 'Add favorite'}
+          title={favoriteLimitReached ? 'Favorite limit reached' : ''}
         >
           {isFavoriteSelected ? '★' : '☆'}
         </button>
@@ -746,13 +881,35 @@ function App() {
   };
 
   const handleDaySelect = async (date, hasAccess) => {
-    if (!hasAccess) return;
+    if (!hasAccess) {
+      showToast('Upgrade your subscription to see more days.', 'warning', 6000, {
+        label: 'Manage',
+        onClick: () => {
+          setActiveView('subscription');
+          setToastMessage('');
+          setToastAction(null);
+        },
+      });
+      return;
+    }
     await loadDaySegments(date);
   };
 
   const handleHourlyOpen = async (event) => {
     event.stopPropagation();
     if (!dayModalDate) return;
+    const canViewHourly = roleHourly[role] ?? false;
+    if (!canViewHourly) {
+      showToast('Upgrade your subscription to view hourly details.', 'warning', 6000, {
+        label: 'Manage',
+        onClick: () => {
+          setActiveView('subscription');
+          setToastMessage('');
+          setToastAction(null);
+        },
+      });
+      return;
+    }
     await loadHourly(dayModalDate);
   };
 
@@ -1192,7 +1349,7 @@ function App() {
                     </div>
                     <div className="profile-row">
                       <span className="profile-label">Subscription</span>
-                      <span>{(user?.roles || []).join(', ') || '-'}</span>
+                      <span>{roleLabels[role] || role || '-'}</span>
                     </div>
                     <div className="profile-row">
                       <span className="profile-label">Home resort</span>
@@ -1343,6 +1500,42 @@ function App() {
               </div>
             </div>
           ) : null}
+          {activeView === 'subscription' ? (
+            <div className="profile-page">
+              <div className="profile-card">
+                <div className="profile-header">
+                  <h2>Subscription</h2>
+                  <button type="button" className="ghost" onClick={() => setActiveView('calendar')}>
+                    Back to forecast
+                  </button>
+                </div>
+                {isSignedIn ? (
+                  <div className="profile-content">
+                    <p>Subscription management is coming soon.</p>
+                    <form className="discount-form" onSubmit={handleRedeemDiscount}>
+                      <label>
+                        Discount Code
+                        <input
+                          type="text"
+                          value={discountCode}
+                          onChange={(event) => setDiscountCode(event.target.value)}
+                          placeholder="Enter code"
+                          required
+                        />
+                      </label>
+                      <button type="submit">Apply</button>
+                    </form>
+                    {discountStatus ? <div className="profile-alerts-status">{discountStatus}</div> : null}
+                  </div>
+                ) : (
+                  <div className="profile-empty">
+                    <p>Please sign in to manage your subscription.</p>
+                    {loginButton}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           {loadingForecast ? <div className="loading">Loading forecast…</div> : null}
         </section>
@@ -1376,6 +1569,20 @@ function App() {
             </form>
             {authMessage ? <div className="modal-message">{authMessage}</div> : null}
           </div>
+        </div>
+      ) : null}
+      {toastMessage ? (
+        <div className={`app-toast ${toastKind}`} role="status">
+          {toastMessage}
+          {toastAction ? (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={toastAction.onClick}
+            >
+              {toastAction.label}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

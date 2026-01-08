@@ -3,6 +3,7 @@
 const mongoose = require('mongoose');
 const adminUserDb = require('../models/adminUserDb');
 const { getFrontendUserFromRequest } = require('./frontendAuth');
+const { getFavoriteLimitForRole, normalizeRole } = require('./roleConfig');
 
 function normalizeFavoriteIds(input) {
   if (!Array.isArray(input)) return [];
@@ -46,20 +47,23 @@ async function handleUpdatePreferences(request, response) {
   }
   const favorites = normalizeFavoriteIds(request.body?.favorites);
   const homeResortId = String(request.body?.homeResortId || '').trim();
+  const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'guest');
+  const favoriteLimit = getFavoriteLimitForRole(role);
+  const limitedFavorites = favoriteLimit >= 0 ? favorites.slice(0, favoriteLimit) : favorites;
   const nextHomeResortId = mongoose.Types.ObjectId.isValid(homeResortId) ? homeResortId : null;
   const units = normalizeUnits(request.body?.units);
   const record = await adminUserDb.findById(user.id);
   if (!record) {
     return response.status(404).send({ error: 'User not found' });
   }
-  record.favoriteLocations = favorites;
+  record.favoriteLocations = limitedFavorites;
   record.homeResortId = nextHomeResortId;
   if (units) {
     record.unitsPreference = units;
   }
   await record.save();
   return response.status(200).send({
-    favorites: favorites.map((id) => String(id)),
+    favorites: limitedFavorites.map((id) => String(id)),
     homeResortId: nextHomeResortId ? String(nextHomeResortId) : '',
     units: record.unitsPreference || '',
   });

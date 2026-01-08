@@ -1,8 +1,8 @@
 'use strict';
 
 const adminUserDb = require('../models/adminUserDb');
-const { OWNER_ROLE, ADMIN_ROLE, BASIC_ROLE, STANDARD_ROLE, ADVANCED_ROLE } = require('./adminAuth');
-const ALLOWED_ROLES = new Set([OWNER_ROLE, ADMIN_ROLE, BASIC_ROLE, STANDARD_ROLE, ADVANCED_ROLE]);
+const { OWNER_ROLE, ADMIN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE } = require('./adminAuth');
+const ALLOWED_ROLES = new Set([OWNER_ROLE, ADMIN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE]);
 const ALLOWED_LOCATION_ACCESS = new Set(['all', 'resort-only']);
 const { config } = require('../config');
 const BOOTSTRAP_EMAIL = config.backend.ownerEmail;
@@ -40,7 +40,7 @@ async function createUser(request, response, next) {
     const user = await adminUserDb.create({
       email: normalizedEmail,
       name: name ? String(name).trim() : '',
-      roles: parsedRoles.length ? parsedRoles : [BASIC_ROLE],
+      roles: parsedRoles.length ? parsedRoles : [LEVEL1_ROLE],
       locationAccess: parsedAccess || 'all',
       adminAccess: parsedAdminAccess,
       status: 'active',
@@ -63,7 +63,7 @@ async function updateUser(request, response, next) {
       if (parsedRoles.includes(OWNER_ROLE)) {
         return response.status(403).send('Cannot assign owner role');
       }
-      update.roles = parsedRoles.length ? parsedRoles : [BASIC_ROLE];
+      update.roles = parsedRoles.length ? parsedRoles : [LEVEL1_ROLE];
     }
     if (status === 'active' || status === 'suspended') {
       update.status = status;

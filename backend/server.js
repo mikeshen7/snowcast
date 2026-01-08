@@ -18,6 +18,7 @@ const adminConfig = require('./modules/adminConfig');
 const frontendAuth = require('./modules/frontendAuth');
 const frontendPreferences = require('./modules/frontendPreferences');
 const powAlerts = require('./modules/powAlerts');
+const discountCodes = require('./modules/discountCodes');
 const {
   requireAdminSession,
   handleRequestMagicLink,
@@ -72,6 +73,7 @@ app.post('/user/alerts', (req, res, next) => powAlerts.handleCreateAlert(req, re
 app.put('/user/alerts/:id', (req, res, next) => powAlerts.handleUpdateAlert(req, res, next));
 app.delete('/user/alerts/:id', (req, res, next) => powAlerts.handleDeleteAlert(req, res, next));
 app.post('/user/alerts/check', (req, res, next) => powAlerts.handleCheckAlerts(req, res, next));
+app.post('/user/discount-codes/redeem', (req, res, next) => discountCodes.redeemCode(req, res, next));
 
 // *** Admin UI gate
 app.get('/admin.html', (request, response) => {
@@ -119,6 +121,10 @@ if (ADMIN_ENABLED) {
 
   app.get('/admin/config', requireAdminSession, (req, res, next) => adminConfig.endpointGetConfig(req, res, next));
   app.put('/admin/config/:key', requireAdminSession, (req, res, next) => adminConfig.endpointUpdateConfig(req, res, next));
+  app.get('/admin/discount-codes', requireAdminSession, (req, res, next) => discountCodes.listCodes(req, res, next));
+  app.post('/admin/discount-codes', requireAdminSession, (req, res, next) => discountCodes.createCode(req, res, next));
+  app.put('/admin/discount-codes/:id', requireAdminSession, (req, res, next) => discountCodes.updateCode(req, res, next));
+  app.delete('/admin/discount-codes/:id', requireAdminSession, (req, res, next) => discountCodes.deleteCode(req, res, next));
   app.get('/admin/api-clients', requireAdminSession, (req, res, next) => adminApiClients.endpointListClients(req, res, next));
   app.post('/admin/api-clients', requireAdminSession, (req, res, next) => adminApiClients.endpointCreateClient(req, res, next));
   app.put('/admin/api-clients/:id', requireAdminSession, (req, res, next) => adminApiClients.endpointUpdateClient(req, res, next));

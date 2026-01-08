@@ -12,6 +12,7 @@ const { aggregateDailyOverview } = require('./weatherAggregations');
 const { sendEmail } = require('./email');
 const { getLocalPartsFromUtc, localDateTimeToUtcEpoch, shiftLocalDate, formatDateKey } = require('./timezone');
 const { config } = require('../config');
+const { getPowAlertLimitForRole, canCheckPow, normalizeRole } = require('./roleConfig');
 
 const SEND_HOUR_LOCAL = 17;
 
@@ -492,6 +493,14 @@ async function handleCreateAlert(request, response) {
   if (!user) {
     return response.status(403).send({ error: 'Forbidden' });
   }
+  const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1');
+  const limit = getPowAlertLimitForRole(role);
+  if (limit >= 0) {
+    const existingCount = await powAlertDb.countDocuments({ userId: user.id });
+    if (existingCount >= limit) {
+      return response.status(403).send({ error: 'Pow alert limit reached' });
+    }
+  }
   const payload = normalizeAlertPayload(request.body);
   if (!mongoose.Types.ObjectId.isValid(payload.locationId)) {
     return response.status(400).send({ error: 'locationId is required' });
@@ -569,6 +578,10 @@ async function handleCheckAlerts(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
     return response.status(403).send({ error: 'Forbidden' });
+  }
+  const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1');
+  if (!canCheckPow(role)) {
+    return response.status(403).send({ error: 'Check Pow Now not allowed for this subscription' });
   }
   const alerts = await powAlertDb.find({ userId: user.id, active: true });
   const results = [];

@@ -97,6 +97,14 @@ export function checkPowAlerts() {
   });
 }
 
+export function redeemDiscountCode(code) {
+  return apiFetch('/user/discount-codes/redeem', {
+    method: 'POST',
+    body: { code },
+  });
+}
+
+
 export function getLocations({ query = '', isSkiResort = true, limit = 50 } = {}) {
   return apiFetch('/locations', {
     params: { q: query, isSkiResort, limit },

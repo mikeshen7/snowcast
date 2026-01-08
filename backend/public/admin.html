@@ -83,6 +83,8 @@
       <button class="tab-btn" data-tab="hourlyTab">Hourly</button>
       <button class="tab-btn" data-tab="locationsTab">Locations</button>
       <button class="tab-btn" data-tab="usersTab">Users</button>
+      <button class="tab-btn" data-tab="rolesTab">Roles</button>
+      <button class="tab-btn" data-tab="discountCodesTab">Discount Codes</button>
       <button class="tab-btn" data-tab="apiKeysTab">API Keys</button>
       <button class="tab-btn" data-tab="configTab">Config</button>
     </div>
@@ -310,9 +312,9 @@
         <label>Name<input type="text" id="adminUserName" placeholder="Optional" /></label>
         <label>Role
           <select id="adminUserRoleSelect">
-            <option value="basic">Basic</option>
-            <option value="standard">Standard</option>
-            <option value="advanced">Advanced</option>
+            <option value="level1">Starter</option>
+            <option value="level2">Plus</option>
+            <option value="level3">Pro</option>
             <option value="admin">Admin</option>
           </select>
         </label>
@@ -351,6 +353,69 @@
             <th>Location Type</th>
             <th>Status</th>
             <th>Last Login</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div id="rolesTab" class="tab-panel">
+      <h2>Roles</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Display Name</th>
+            <th>Favorites Limit</th>
+            <th>Hourly Access</th>
+            <th>Pow Alerts Limit</th>
+            <th>Check Pow Now</th>
+            <th>Forecast Range</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="rolesTableBody"></tbody>
+      </table>
+      <div class="form-actions" style="margin-top:0.75rem;">
+        <button type="button" id="saveRoleLabelsBtn">Save Roles</button>
+        <span id="roleLabelsStatus" class="status" style="margin:0;"></span>
+      </div>
+    </div>
+
+    <div id="discountCodesTab" class="tab-panel">
+      <h2>Discount Codes</h2>
+      <form id="discountCodeForm" class="flex-row">
+        <input type="hidden" id="discountCodeId" />
+        <label>Code<input type="text" id="discountCodeValue" required placeholder="snowcast" /></label>
+        <label>Role
+          <select id="discountCodeRole">
+            <option value="level1">level1</option>
+            <option value="level2">level2</option>
+            <option value="level3" selected>level3</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <label>Active
+          <select id="discountCodeActive">
+            <option value="true" selected>Yes</option>
+            <option value="false">No</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="submit" id="discountCodeSubmitBtn">Save Code</button>
+          <button type="button" id="discountCodeCancelBtn" style="display:none;">Cancel</button>
+          <button type="button" id="discountCodeRefreshBtn">Refresh</button>
+        </div>
+      </form>
+      <div id="discountCodeStatus" class="status"></div>
+      <table id="discountCodesTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Role</th>
+            <th>Active</th>
             <th>Created</th>
             <th></th>
           </tr>
@@ -478,6 +543,239 @@
       }
     }
 
+    function formatRoleLabel(code) {
+      const normalized = code === 'basic' ? 'level1' : code === 'standard' ? 'level2' : code === 'advanced' ? 'level3' : code;
+      return roleLabels[normalized] || normalized || '';
+    }
+
+    function renderRolesTable() {
+      if (!rolesTableBody) return;
+      rolesTableBody.innerHTML = '';
+      ROLE_LIMITS.forEach((role) => {
+        const tr = document.createElement('tr');
+        const inputId = `role-label-${role.code}`;
+        const favoritesId = `role-fav-${role.code}`;
+        const hourlyId = `role-hourly-${role.code}`;
+        const powAlertsId = `role-pow-${role.code}`;
+        const checkPowId = `role-checkpow-${role.code}`;
+        const favoriteValue = Number.isFinite(roleFavoriteLimits[role.code])
+          ? roleFavoriteLimits[role.code]
+          : DEFAULT_ROLE_FAVORITES[role.code] ?? 0;
+        const hourlyValue = Boolean(roleHourlyAccess[role.code]);
+        const powAlertsValue = Number.isFinite(rolePowAlerts[role.code])
+          ? rolePowAlerts[role.code]
+          : DEFAULT_ROLE_POW_ALERTS[role.code] ?? 0;
+        const checkPowValue = Boolean(roleCheckPow[role.code]);
+        tr.innerHTML = `
+          <td>${role.code}</td>
+          <td>
+            <input type="text" id="${inputId}" value="${formatRoleLabel(role.code)}" class="value-input" />
+          </td>
+          <td>
+            <input type="number" id="${favoritesId}" value="${favoriteValue}" class="value-input" />
+          </td>
+          <td>
+            <input type="checkbox" id="${hourlyId}" ${hourlyValue ? 'checked' : ''} />
+          </td>
+          <td>
+            <input type="number" id="${powAlertsId}" value="${powAlertsValue}" class="value-input" />
+          </td>
+          <td>
+            <input type="checkbox" id="${checkPowId}" ${checkPowValue ? 'checked' : ''} />
+          </td>
+          <td>${role.limit}</td>
+          <td>${role.notes}</td>
+        `;
+        rolesTableBody.appendChild(tr);
+      });
+    }
+
+    function updateRoleSelectOptions() {
+      if (!adminUserRoleSelect) return;
+      const current = adminUserRoleSelect.value;
+      adminUserRoleSelect.innerHTML = '';
+      const options = [
+        { value: 'level1', label: formatRoleLabel('level1') },
+        { value: 'level2', label: formatRoleLabel('level2') },
+        { value: 'level3', label: formatRoleLabel('level3') },
+        { value: 'admin', label: formatRoleLabel('admin') },
+      ];
+      options.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        adminUserRoleSelect.appendChild(option);
+      });
+      adminUserRoleSelect.value = current || 'level1';
+    }
+
+    function applyRoleLabelsFromConfig(entries) {
+      const labelMap = { ...DEFAULT_ROLE_LABELS };
+      const favoritesMap = { ...DEFAULT_ROLE_FAVORITES };
+      const hourlyMap = { ...DEFAULT_ROLE_HOURLY };
+      const powAlertsMap = { ...DEFAULT_ROLE_POW_ALERTS };
+      const checkPowMap = { ...DEFAULT_ROLE_CHECK_POW };
+      (entries || []).forEach((entry) => {
+        if (!entry?.key) return;
+        if (entry.key === 'ROLE_LABEL_GUEST') labelMap.guest = String(entry.value || labelMap.guest);
+        if (entry.key === 'ROLE_LABEL_LEVEL1') labelMap.level1 = String(entry.value || labelMap.level1);
+        if (entry.key === 'ROLE_LABEL_LEVEL2') labelMap.level2 = String(entry.value || labelMap.level2);
+        if (entry.key === 'ROLE_LABEL_LEVEL3') labelMap.level3 = String(entry.value || labelMap.level3);
+        if (entry.key === 'ROLE_LABEL_ADMIN') labelMap.admin = String(entry.value || labelMap.admin);
+        if (entry.key === 'ROLE_LABEL_OWNER') labelMap.owner = String(entry.value || labelMap.owner);
+        if (entry.key === 'ROLE_FAVORITES_GUEST') favoritesMap.guest = Number(entry.value);
+        if (entry.key === 'ROLE_FAVORITES_LEVEL1') favoritesMap.level1 = Number(entry.value);
+        if (entry.key === 'ROLE_FAVORITES_LEVEL2') favoritesMap.level2 = Number(entry.value);
+        if (entry.key === 'ROLE_FAVORITES_LEVEL3') favoritesMap.level3 = Number(entry.value);
+        if (entry.key === 'ROLE_FAVORITES_ADMIN') favoritesMap.admin = Number(entry.value);
+        if (entry.key === 'ROLE_FAVORITES_OWNER') favoritesMap.owner = Number(entry.value);
+        if (entry.key === 'ROLE_HOURLY_GUEST') hourlyMap.guest = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_HOURLY_LEVEL1') hourlyMap.level1 = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_HOURLY_LEVEL2') hourlyMap.level2 = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_HOURLY_LEVEL3') hourlyMap.level3 = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_HOURLY_ADMIN') hourlyMap.admin = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_HOURLY_OWNER') hourlyMap.owner = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_POW_ALERTS_LEVEL1') powAlertsMap.level1 = Number(entry.value);
+        if (entry.key === 'ROLE_POW_ALERTS_LEVEL2') powAlertsMap.level2 = Number(entry.value);
+        if (entry.key === 'ROLE_POW_ALERTS_LEVEL3') powAlertsMap.level3 = Number(entry.value);
+        if (entry.key === 'ROLE_POW_ALERTS_ADMIN') powAlertsMap.admin = Number(entry.value);
+        if (entry.key === 'ROLE_POW_ALERTS_OWNER') powAlertsMap.owner = Number(entry.value);
+        if (entry.key === 'ROLE_CHECK_POW_GUEST') checkPowMap.guest = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_CHECK_POW_LEVEL1') checkPowMap.level1 = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_CHECK_POW_LEVEL2') checkPowMap.level2 = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_CHECK_POW_LEVEL3') checkPowMap.level3 = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_CHECK_POW_ADMIN') checkPowMap.admin = Number(entry.value) === 1;
+        if (entry.key === 'ROLE_CHECK_POW_OWNER') checkPowMap.owner = Number(entry.value) === 1;
+      });
+      roleLabels = labelMap;
+      roleFavoriteLimits = favoritesMap;
+      roleHourlyAccess = hourlyMap;
+      rolePowAlerts = powAlertsMap;
+      roleCheckPow = checkPowMap;
+      renderRolesTable();
+      updateRoleSelectOptions();
+    }
+
+    async function loadRoleLabels() {
+      try {
+        const res = await authFetch('/admin/config');
+        if (!res.ok) throw new Error('Failed to load role labels');
+        const entries = await res.json();
+        applyRoleLabelsFromConfig(entries);
+      } catch (err) {
+        renderRolesTable();
+        updateRoleSelectOptions();
+      }
+    }
+
+    function getRoleLabelUpdates() {
+      const updates = [];
+      ROLE_LIMITS.forEach((role) => {
+        const input = document.getElementById(`role-label-${role.code}`);
+        const favoritesInput = document.getElementById(`role-fav-${role.code}`);
+        const hourlyInput = document.getElementById(`role-hourly-${role.code}`);
+        const powAlertsInput = document.getElementById(`role-pow-${role.code}`);
+        const checkPowInput = document.getElementById(`role-checkpow-${role.code}`);
+        if (!input) return;
+        const value = input.value.trim();
+        if (role.code === 'guest') updates.push({ key: 'ROLE_LABEL_GUEST', value });
+        if (role.code === 'level1') updates.push({ key: 'ROLE_LABEL_LEVEL1', value });
+        if (role.code === 'level2') updates.push({ key: 'ROLE_LABEL_LEVEL2', value });
+        if (role.code === 'level3') updates.push({ key: 'ROLE_LABEL_LEVEL3', value });
+        if (role.code === 'admin') updates.push({ key: 'ROLE_LABEL_ADMIN', value });
+        if (role.code === 'owner') updates.push({ key: 'ROLE_LABEL_OWNER', value });
+        if (favoritesInput) {
+          const favoritesValue = Number(favoritesInput.value);
+          if (role.code === 'guest') updates.push({ key: 'ROLE_FAVORITES_GUEST', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
+          if (role.code === 'level1') updates.push({ key: 'ROLE_FAVORITES_LEVEL1', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
+          if (role.code === 'level2') updates.push({ key: 'ROLE_FAVORITES_LEVEL2', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
+          if (role.code === 'level3') updates.push({ key: 'ROLE_FAVORITES_LEVEL3', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
+          if (role.code === 'admin') updates.push({ key: 'ROLE_FAVORITES_ADMIN', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
+          if (role.code === 'owner') updates.push({ key: 'ROLE_FAVORITES_OWNER', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
+        }
+        if (hourlyInput) {
+          const hourlyValue = hourlyInput.checked ? 1 : 0;
+          if (role.code === 'guest') updates.push({ key: 'ROLE_HOURLY_GUEST', value: hourlyValue });
+          if (role.code === 'level1') updates.push({ key: 'ROLE_HOURLY_LEVEL1', value: hourlyValue });
+          if (role.code === 'level2') updates.push({ key: 'ROLE_HOURLY_LEVEL2', value: hourlyValue });
+          if (role.code === 'level3') updates.push({ key: 'ROLE_HOURLY_LEVEL3', value: hourlyValue });
+          if (role.code === 'admin') updates.push({ key: 'ROLE_HOURLY_ADMIN', value: hourlyValue });
+          if (role.code === 'owner') updates.push({ key: 'ROLE_HOURLY_OWNER', value: hourlyValue });
+        }
+        if (powAlertsInput) {
+          const powValue = Number(powAlertsInput.value);
+          if (role.code === 'level1') updates.push({ key: 'ROLE_POW_ALERTS_LEVEL1', value: Number.isFinite(powValue) ? powValue : 0 });
+          if (role.code === 'level2') updates.push({ key: 'ROLE_POW_ALERTS_LEVEL2', value: Number.isFinite(powValue) ? powValue : 0 });
+          if (role.code === 'level3') updates.push({ key: 'ROLE_POW_ALERTS_LEVEL3', value: Number.isFinite(powValue) ? powValue : 0 });
+          if (role.code === 'admin') updates.push({ key: 'ROLE_POW_ALERTS_ADMIN', value: Number.isFinite(powValue) ? powValue : 0 });
+          if (role.code === 'owner') updates.push({ key: 'ROLE_POW_ALERTS_OWNER', value: Number.isFinite(powValue) ? powValue : 0 });
+        }
+        if (checkPowInput) {
+          const checkPowValue = checkPowInput.checked ? 1 : 0;
+          if (role.code === 'guest') updates.push({ key: 'ROLE_CHECK_POW_GUEST', value: checkPowValue });
+          if (role.code === 'level1') updates.push({ key: 'ROLE_CHECK_POW_LEVEL1', value: checkPowValue });
+          if (role.code === 'level2') updates.push({ key: 'ROLE_CHECK_POW_LEVEL2', value: checkPowValue });
+          if (role.code === 'level3') updates.push({ key: 'ROLE_CHECK_POW_LEVEL3', value: checkPowValue });
+          if (role.code === 'admin') updates.push({ key: 'ROLE_CHECK_POW_ADMIN', value: checkPowValue });
+          if (role.code === 'owner') updates.push({ key: 'ROLE_CHECK_POW_OWNER', value: checkPowValue });
+        }
+      });
+      return updates;
+    }
+
+    function hydrateRoleStateFromInputs() {
+      const labelMap = { ...DEFAULT_ROLE_LABELS };
+      const favoritesMap = { ...DEFAULT_ROLE_FAVORITES };
+      const hourlyMap = { ...DEFAULT_ROLE_HOURLY };
+      const powAlertsMap = { ...DEFAULT_ROLE_POW_ALERTS };
+      const checkPowMap = { ...DEFAULT_ROLE_CHECK_POW };
+      ROLE_LIMITS.forEach((role) => {
+        const labelInput = document.getElementById(`role-label-${role.code}`);
+        const favoritesInput = document.getElementById(`role-fav-${role.code}`);
+        const hourlyInput = document.getElementById(`role-hourly-${role.code}`);
+        const powAlertsInput = document.getElementById(`role-pow-${role.code}`);
+        const checkPowInput = document.getElementById(`role-checkpow-${role.code}`);
+        if (labelInput) labelMap[role.code] = labelInput.value.trim() || labelMap[role.code];
+        if (favoritesInput) {
+          const value = Number(favoritesInput.value);
+          favoritesMap[role.code] = Number.isFinite(value) ? value : favoritesMap[role.code];
+        }
+        if (hourlyInput) hourlyMap[role.code] = Boolean(hourlyInput.checked);
+        if (powAlertsInput) {
+          const value = Number(powAlertsInput.value);
+          powAlertsMap[role.code] = Number.isFinite(value) ? value : powAlertsMap[role.code];
+        }
+        if (checkPowInput) checkPowMap[role.code] = Boolean(checkPowInput.checked);
+      });
+      roleLabels = labelMap;
+      roleFavoriteLimits = favoritesMap;
+      roleHourlyAccess = hourlyMap;
+      rolePowAlerts = powAlertsMap;
+      roleCheckPow = checkPowMap;
+      renderRolesTable();
+      updateRoleSelectOptions();
+    }
+
+    async function saveRoleLabels() {
+      if (!roleLabelsStatus) return;
+      roleLabelsStatus.textContent = 'Saving...';
+      try {
+        const updates = getRoleLabelUpdates();
+        for (const entry of updates) {
+          await authFetch('/admin/config/' + entry.key, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: entry.value }),
+          });
+        }
+        roleLabelsStatus.textContent = 'Saved';
+        hydrateRoleStateFromInputs();
+        await loadRoleLabels();
+      } catch (err) {
+        roleLabelsStatus.textContent = err.message || 'Save failed';
+      }
+    }
+
     function setAuthenticated(user) {
       sessionUser = user;
       sessionLocationAccess = user?.locationAccess || 'all';
@@ -492,15 +790,23 @@
       if (logoutBtn) {
         logoutBtn.classList.remove('hidden');
       }
+      renderRolesTable();
+      updateRoleSelectOptions();
+      if (saveRoleLabelsBtn) {
+        saveRoleLabelsBtn.addEventListener('click', saveRoleLabels);
+      }
       showToast('Admin access granted');
       if (isBackendAdmin) {
+        loadRoleLabels();
         loadConfig();
         loadApiClients();
         loadAdminUsers();
+        loadDiscountCodes();
       } else {
         hideTab('apiKeysTab');
         hideTab('configTab');
         hideTab('usersTab');
+        hideTab('discountCodesTab');
         disableLocationWrites();
       }
       applyLocationAccessUI();
@@ -708,6 +1014,79 @@
     const adminUsersStatus = document.getElementById('adminUsersStatus');
     const adminUsersTable = document.getElementById('adminUsersTable');
     const adminUsersBody = adminUsersTable ? adminUsersTable.querySelector('tbody') : null;
+    const rolesTableBody = document.getElementById('rolesTableBody');
+    const saveRoleLabelsBtn = document.getElementById('saveRoleLabelsBtn');
+    const roleLabelsStatus = document.getElementById('roleLabelsStatus');
+    const discountCodeForm = document.getElementById('discountCodeForm');
+    const discountCodeId = document.getElementById('discountCodeId');
+    const discountCodeValue = document.getElementById('discountCodeValue');
+    const discountCodeRole = document.getElementById('discountCodeRole');
+    const discountCodeActive = document.getElementById('discountCodeActive');
+    const discountCodeSubmitBtn = document.getElementById('discountCodeSubmitBtn');
+    const discountCodeCancelBtn = document.getElementById('discountCodeCancelBtn');
+    const discountCodeRefreshBtn = document.getElementById('discountCodeRefreshBtn');
+    const discountCodeStatus = document.getElementById('discountCodeStatus');
+    const discountCodesTable = document.getElementById('discountCodesTable');
+    const discountCodesBody = discountCodesTable ? discountCodesTable.querySelector('tbody') : null;
+
+    const DEFAULT_ROLE_LABELS = {
+      guest: 'Guest',
+      level1: 'Starter',
+      level2: 'Plus',
+      level3: 'Pro',
+      admin: 'Admin',
+      owner: 'Owner',
+    };
+
+    const DEFAULT_ROLE_FAVORITES = {
+      guest: 0,
+      level1: 1,
+      level2: 3,
+      level3: -1,
+      admin: -1,
+      owner: -1,
+    };
+
+    const DEFAULT_ROLE_HOURLY = {
+      guest: false,
+      level1: false,
+      level2: true,
+      level3: true,
+      admin: true,
+      owner: true,
+    };
+
+    const DEFAULT_ROLE_POW_ALERTS = {
+      level1: 1,
+      level2: 3,
+      level3: 10,
+      admin: -1,
+      owner: -1,
+    };
+
+    const DEFAULT_ROLE_CHECK_POW = {
+      guest: false,
+      level1: false,
+      level2: false,
+      level3: true,
+      admin: true,
+      owner: true,
+    };
+
+    const ROLE_LIMITS = [
+      { code: 'guest', limit: 'Today + 1 day', notes: 'Default for signed-out users.' },
+      { code: 'level1', limit: '3 days back / 3 days forward', notes: 'Entry subscription level.' },
+      { code: 'level2', limit: '7 days back / 7 days forward', notes: 'Expanded forecast window.' },
+      { code: 'level3', limit: 'Unlimited', notes: 'Full forecast access.' },
+      { code: 'admin', limit: 'Unlimited', notes: 'Full forecast access.' },
+      { code: 'owner', limit: 'Unlimited', notes: 'Full forecast access.' },
+    ];
+
+    let roleLabels = { ...DEFAULT_ROLE_LABELS };
+    let roleFavoriteLimits = { ...DEFAULT_ROLE_FAVORITES };
+    let roleHourlyAccess = { ...DEFAULT_ROLE_HOURLY };
+    let rolePowAlerts = { ...DEFAULT_ROLE_POW_ALERTS };
+    let roleCheckPow = { ...DEFAULT_ROLE_CHECK_POW };
 
     document.getElementById('locationSearchForm').addEventListener('submit', (event) => {
       event.preventDefault();
@@ -761,6 +1140,15 @@
     }
     if (adminUserCancelBtn) {
       adminUserCancelBtn.addEventListener('click', resetAdminUserForm);
+    }
+    if (discountCodeForm) {
+      discountCodeForm.addEventListener('submit', submitDiscountCode);
+    }
+    if (discountCodeRefreshBtn) {
+      discountCodeRefreshBtn.addEventListener('click', () => loadDiscountCodes());
+    }
+    if (discountCodeCancelBtn) {
+      discountCodeCancelBtn.addEventListener('click', resetDiscountCodeForm);
     }
 
     async function loadLocations() {
@@ -1301,11 +1689,14 @@
       adminUsersBody.innerHTML = '';
       (users || []).forEach((user) => {
         const isOwner = Array.isArray(user.roles) && user.roles.includes('owner');
+        const roleText = Array.isArray(user.roles) && user.roles.length
+          ? user.roles.map((role) => formatRoleLabel(role)).join(', ')
+          : '';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${user.email || ''}</td>
           <td>${user.name || ''}</td>
-          <td>${Array.isArray(user.roles) ? user.roles.join(', ') : ''}</td>
+          <td>${roleText}</td>
           <td>${user.adminAccess || isOwner ? 'Yes' : 'No'}</td>
           <td>${user.locationAccess || 'all'}</td>
           <td>${user.status || ''}</td>
@@ -1345,7 +1736,7 @@
       const email = adminUserEmail?.value.trim();
       const name = adminUserName?.value.trim();
       const isOwner = adminUserForm?.dataset?.isOwner === 'true';
-      const roles = adminUserRoleSelect ? [adminUserRoleSelect.value] : ['basic'];
+      const roles = adminUserRoleSelect ? [adminUserRoleSelect.value] : ['level1'];
       const status = adminUserStatusSelect ? adminUserStatusSelect.value : 'active';
       const locationAccess = adminUserLocationAccess ? adminUserLocationAccess.value : 'all';
       const adminAccess = adminUserAdminAccess?.value === 'true';
@@ -1412,7 +1803,7 @@
       }
       if (adminUserName) adminUserName.value = user.name || '';
       if (adminUserRoleSelect) {
-        adminUserRoleSelect.value = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'basic';
+        adminUserRoleSelect.value = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1';
       }
       if (adminUserStatusSelect) {
         adminUserStatusSelect.value = user.status || 'active';
@@ -1436,7 +1827,7 @@
       if (adminUserForm) adminUserForm.reset();
       if (adminUserId) adminUserId.value = '';
       if (adminUserEmail) adminUserEmail.disabled = false;
-      if (adminUserRoleSelect) adminUserRoleSelect.value = 'basic';
+      if (adminUserRoleSelect) adminUserRoleSelect.value = 'level1';
       if (adminUserStatusSelect) adminUserStatusSelect.value = 'active';
       if (adminUserLocationAccess) adminUserLocationAccess.value = 'all';
       if (adminUserAdminAccess) adminUserAdminAccess.value = 'false';
@@ -1485,6 +1876,162 @@
         loadAdminUsers();
       } catch (err) {
         adminUsersStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    async function loadDiscountCodes() {
+      if (!discountCodeStatus) return;
+      discountCodeStatus.textContent = 'Loading discount codes...';
+      try {
+        const res = await authFetch('/admin/discount-codes');
+        if (!res.ok) throw new Error('Failed to load discount codes');
+        const data = await res.json();
+        renderDiscountCodes(data || []);
+        discountCodeStatus.textContent = `Loaded ${data?.length || 0} codes`;
+      } catch (err) {
+        discountCodeStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function renderDiscountCodes(codes) {
+      if (!discountCodesBody) return;
+      discountCodesBody.innerHTML = '';
+      (codes || []).forEach((code) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${code.code || ''}</td>
+          <td>${formatRoleLabel(code.targetRole)}</td>
+          <td>${code.active ? 'Yes' : 'No'}</td>
+          <td>${formatDateTimeLocal(code.createdAt)}</td>
+          <td>
+            <button type="button" class="discount-edit-btn">Edit</button>
+            <button type="button" class="discount-toggle-btn">${code.active ? 'Disable' : 'Enable'}</button>
+            <button type="button" class="discount-delete-btn">Delete</button>
+          </td>
+        `;
+        const editBtn = tr.querySelector('.discount-edit-btn');
+        if (editBtn) {
+          editBtn.addEventListener('click', () => startEditDiscountCode(code));
+        }
+        const toggleBtn = tr.querySelector('.discount-toggle-btn');
+        if (toggleBtn) {
+          toggleBtn.addEventListener('click', () => toggleDiscountCode(code));
+        }
+        const deleteBtn = tr.querySelector('.discount-delete-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', () => deleteDiscountCode(code));
+        }
+        discountCodesBody.appendChild(tr);
+      });
+      if (discountCodesTable) {
+        discountCodesTable.style.display = codes?.length ? 'table' : 'none';
+      }
+    }
+
+    async function submitDiscountCode(event) {
+      event.preventDefault();
+      if (!discountCodeStatus) return;
+      const editingId = discountCodeId?.value;
+      const code = discountCodeValue?.value.trim();
+      const targetRole = discountCodeRole?.value || 'level3';
+      const active = discountCodeActive?.value !== 'false';
+      if (!editingId && !code) {
+        discountCodeStatus.textContent = 'Code is required';
+        return;
+      }
+      discountCodeStatus.textContent = editingId ? 'Saving discount code...' : 'Creating discount code...';
+      try {
+        const endpoint = editingId ? `/admin/discount-codes/${editingId}` : '/admin/discount-codes';
+        const method = editingId ? 'PUT' : 'POST';
+        const payload = editingId ? { targetRole, active } : { code, targetRole, active };
+        const res = await authFetch(endpoint, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to save discount code');
+        }
+        discountCodeStatus.textContent = editingId ? 'Discount code updated' : 'Discount code created';
+        showToast(editingId ? 'Discount code updated' : 'Discount code created');
+        resetDiscountCodeForm();
+        loadDiscountCodes();
+      } catch (err) {
+        discountCodeStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function startEditDiscountCode(code) {
+      if (!code) return;
+      if (discountCodeId) discountCodeId.value = code.id || '';
+      if (discountCodeValue) {
+        discountCodeValue.value = code.code || '';
+        discountCodeValue.disabled = true;
+      }
+      if (discountCodeRole) discountCodeRole.value = code.targetRole || 'level3';
+      if (discountCodeActive) discountCodeActive.value = code.active ? 'true' : 'false';
+      if (discountCodeSubmitBtn) discountCodeSubmitBtn.textContent = 'Save Code';
+      if (discountCodeCancelBtn) discountCodeCancelBtn.style.display = 'inline-block';
+      discountCodeStatus.textContent = `Editing ${code.code || 'code'}`;
+    }
+
+    function resetDiscountCodeForm() {
+      if (discountCodeForm) discountCodeForm.reset();
+      if (discountCodeId) discountCodeId.value = '';
+      if (discountCodeValue) {
+        discountCodeValue.disabled = false;
+      }
+      if (discountCodeRole) discountCodeRole.value = 'level3';
+      if (discountCodeActive) discountCodeActive.value = 'true';
+      if (discountCodeSubmitBtn) discountCodeSubmitBtn.textContent = 'Save Code';
+      if (discountCodeCancelBtn) discountCodeCancelBtn.style.display = 'none';
+      discountCodeStatus.textContent = '';
+    }
+
+    async function toggleDiscountCode(code) {
+      if (!code?.id) return;
+      discountCodeStatus.textContent = 'Updating code...';
+      try {
+        const res = await authFetch(`/admin/discount-codes/${code.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active: !code.active }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to update code');
+        }
+        discountCodeStatus.textContent = 'Discount code updated';
+        showToast('Discount code updated');
+        loadDiscountCodes();
+      } catch (err) {
+        discountCodeStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    async function deleteDiscountCode(code) {
+      if (!code?.id) return;
+      if (!confirm(`Delete discount code "${code.code}"? This cannot be undone.`)) return;
+      discountCodeStatus.textContent = 'Deleting code...';
+      try {
+        const res = await authFetch(`/admin/discount-codes/${code.id}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to delete code');
+        }
+        discountCodeStatus.textContent = 'Discount code deleted';
+        showToast('Discount code deleted');
+        resetDiscountCodeForm();
+        loadDiscountCodes();
+      } catch (err) {
+        discountCodeStatus.textContent = err.message;
         showToast(err.message, true);
       }
     }
