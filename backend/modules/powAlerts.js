@@ -373,8 +373,8 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
     const cells = week.map(({ day }) => {
       if (!day) {
         return `
-          <td style="padding:4px;width:14.285%;vertical-align:top;">
-            <div style="border:1px solid #e0e6ef;border-radius:12px;padding:10px;background:#ffffff;height:120px;box-sizing:border-box;"></div>
+          <td class="sc-cell" style="padding:4px;width:14.285%;vertical-align:top;">
+            <div class="sc-tile" style="border:1px solid #e0e6ef;border-radius:12px;padding:10px;background:#ffffff;height:120px;box-sizing:border-box;"></div>
           </td>
         `;
       }
@@ -405,19 +405,19 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
         ? '<div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#ffffff;background:linear-gradient(120deg,#7fb2f0,#2f5fa8);padding:2px 8px;border-radius:999px;">POW</div>'
         : '';
       return `
-        <td style="padding:4px;width:14.285%;vertical-align:top;">
-          <div style="border:1px solid ${tileBorder};border-radius:12px;padding:10px;background:${tileBackground};position:relative;box-sizing:border-box;overflow:hidden;height:120px;">
+        <td class="sc-cell" style="padding:4px;width:14.285%;vertical-align:top;">
+          <div class="sc-tile" style="border:1px solid ${tileBorder};border-radius:12px;padding:10px;background:${tileBackground};position:relative;box-sizing:border-box;overflow:hidden;height:120px;">
             ${powBadge}
             <div style="font-size:12px;color:#415a77;text-transform:uppercase;letter-spacing:0.08em;">${day.date?.slice(-2) || ''}</div>
-            <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin-top:6px;">
+            <table class="sc-inner" role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin-top:6px;">
               <tr>
                 <td style="width:45%;vertical-align:top;text-align:center;">
-                  ${iconUrl ? `<img src="${iconUrl}" alt="${precipType || resolveCloudLabel(day)}" style="width:30px;height:30px;display:block;margin:0 auto;border:0;" />` : '<div style="width:30px;height:30px;border-radius:14px;background:#dbe7f6;margin:0 auto;"></div>'}
+                  ${iconUrl ? `<img class="sc-icon" src="${iconUrl}" alt="${precipType || resolveCloudLabel(day)}" style="width:30px;height:30px;display:block;margin:0 auto;border:0;" />` : '<div class="sc-icon" style="width:30px;height:30px;border-radius:14px;background:#dbe7f6;margin:0 auto;"></div>'}
                   <div style="font-size:12px;font-weight:600;color:#1b263b;line-height:1.2;margin-top:2px;">${precipValue}</div>
                   <div style="font-size:10px;letter-spacing:0.08em;color:#7a8ca6;text-transform:uppercase;line-height:1.2;margin-top:2px;">${precipLabel}</div>
                 </td>
                 <td style="width:55%;vertical-align:top;">
-                  <div style="font-size:12px;font-weight:600;color:#0d1b2a;line-height:1.2;">
+                  <div class="sc-temps" style="font-size:12px;font-weight:600;color:#0d1b2a;line-height:1.2;">
                     <span style="color:#c7332d;">${formatTempValue(day.maxTemp)}</span>
                     <span style="color:#1c6fd2;margin-left:4px;">${formatTempValue(day.minTemp)}</span>
                   </div>
@@ -435,8 +435,21 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
   }).join('');
 
   return `
-    <div style="font-family:Arial,sans-serif;background:#eef4fb;padding:20px;">
-      <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:18px;padding:20px;">
+    <div class="sc-container" style="font-family:Arial,sans-serif;background:#eef4fb;padding:20px;">
+      <style>
+        @media only screen and (max-width: 600px) {
+          .sc-container { padding: 12px !important; }
+          .sc-card { padding: 14px !important; border-radius: 14px !important; }
+          .sc-day-head { display: none !important; }
+          .sc-week, .sc-week tbody, .sc-week tr, .sc-week td { display: block !important; width: 100% !important; }
+          .sc-cell { padding: 6px 0 !important; }
+          .sc-tile { height: auto !important; padding: 12px !important; }
+          .sc-inner, .sc-inner tr, .sc-inner td { display: block !important; width: 100% !important; text-align: left !important; }
+          .sc-icon { margin: 0 0 6px 0 !important; }
+          .sc-temps { margin-top: 6px !important; }
+        }
+      </style>
+      <div class="sc-card" style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:18px;padding:20px;">
         <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           <tr>
             <td style="vertical-align:middle;">
@@ -451,13 +464,11 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
         <div style="margin-top:12px;font-size:13px;color:#1b263b;">
           Window: next ${windowDays} days · Threshold: ${thresholdIn} in
         </div>
-        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px;border-collapse:collapse;width:100%;table-layout:fixed;">
+        <table class="sc-week" role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px;border-collapse:collapse;width:100%;table-layout:fixed;">
           <tbody>
-            <tr>
+            <tr class="sc-day-head">
               ${['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
-                .map(
-                  (label) => `<td style="padding:4px;width:14.285%;font-size:11px;color:#415a77;text-transform:uppercase;letter-spacing:0.08em;">${label}</td>`
-                )
+                .map((label) => `<td style="padding:4px;width:14.285%;font-size:11px;color:#415a77;text-transform:uppercase;letter-spacing:0.08em;">${label}</td>`)
                 .join('')}
             </tr>
             ${weekRows || `<tr><td style="color:#415a77;">No forecast data available.</td></tr>`}
