@@ -590,6 +590,7 @@ function App() {
     : 'hamburger-button desktop-only';
 
   const roleWindow = ROLE_WINDOWS[role] ?? null;
+  const roleLabel = roleLabels[role] || role || '-';
   const isDayVisible = (date) => {
     if (!roleWindow) return true;
     const offset = differenceInDays(date, today);
@@ -600,6 +601,16 @@ function App() {
   const favoriteLimit = roleLimits[role] ?? 0;
   const canAddFavorite = favoriteLimit < 0 || favorites.length < favoriteLimit;
   const favoriteLimitReached = !isFavoriteSelected && !canAddFavorite;
+  const favoriteLimitLabel = favoriteLimit < 0 ? 'Unlimited' : String(favoriteLimit);
+  const powAlertLimit = rolePowAlerts[role];
+  const powAlertLimitLabel = Number.isFinite(powAlertLimit)
+    ? (powAlertLimit < 0 ? 'Unlimited' : String(powAlertLimit))
+    : '-';
+  const hourlyAccessLabel = roleHourly[role] ? 'Yes' : 'No';
+  const checkPowLabel = roleCheckPow[role] ? 'Yes' : 'No';
+  const forecastWindowLabel = roleWindow
+    ? `${roleWindow.back} days back / ${roleWindow.forward} days forward`
+    : 'Unlimited';
 
   const applyFavoriteLimit = (list, limit, pinnedId) => {
     const unique = Array.from(new Set((list || []).map((id) => String(id)).filter(Boolean)));
@@ -1348,10 +1359,6 @@ function App() {
                       <span>{user?.email || '-'}</span>
                     </div>
                     <div className="profile-row">
-                      <span className="profile-label">Subscription</span>
-                      <span>{roleLabels[role] || role || '-'}</span>
-                    </div>
-                    <div className="profile-row">
                       <span className="profile-label">Home resort</span>
                       <select
                         className="profile-select"
@@ -1384,6 +1391,24 @@ function App() {
                           Metric
                         </button>
                       </div>
+                    </div>
+                    <div className="profile-row">
+                      <span className="profile-label">Subscription</span>
+                      <div className="profile-subscription">
+                        <span>{roleLabel}</span>
+                        <button type="button" className="ghost" onClick={() => setActiveView('subscription')}>
+                          Manage subscription
+                        </button>
+                      </div>
+                    </div>
+                    <div className="profile-row profile-row-limits">
+                      <ul className="profile-limits">
+                        <li>Favorites: {favoriteLimitLabel}</li>
+                        <li>Pow alerts: {powAlertLimitLabel}</li>
+                        <li>Hourly: {hourlyAccessLabel}</li>
+                        <li>Check Pow Now: {checkPowLabel}</li>
+                        <li>Forecast: {forecastWindowLabel}</li>
+                      </ul>
                     </div>
                   </div>
                 ) : (

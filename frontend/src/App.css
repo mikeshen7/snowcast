@@ -1186,6 +1186,27 @@ select option {
   font-size: 11px;
 }
 
+.profile-subscription {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.profile-limits {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.profile-row-limits {
+  justify-content: flex-start;
+}
+
 .profile-empty {
   display: flex;
   flex-direction: column;
