@@ -143,7 +143,7 @@ async function logClientAccess(client, request) {
 
 async function notifyAdminsOfSuspiciousAccess(client, hosts) {
   try {
-    const admins = await adminUserDb.find({ status: 'active', roles: { $in: ['owner', 'admin'] } }).lean();
+    const admins = await adminUserDb.find({ status: 'active', roles: { $in: ['admin'] } }).lean();
     const recipients = admins.map((u) => u.email).filter(Boolean);
     if (!recipients.length) return;
     const subject = `API key access anomaly for client ${client.name || client._id}`;

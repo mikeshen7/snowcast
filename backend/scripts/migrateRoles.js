@@ -5,9 +5,13 @@ const adminUserDb = require('../models/adminUserDb');
 const { config } = require('../config');
 
 const ROLE_MAP = {
-  basic: 'level1',
-  standard: 'level2',
-  advanced: 'level3',
+  basic: 'free',
+  standard: 'premium',
+  advanced: 'premium',
+  level1: 'free',
+  level2: 'premium',
+  level3: 'premium',
+  owner: 'admin',
 };
 
 async function migrateRoles() {

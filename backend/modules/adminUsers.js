@@ -1,11 +1,10 @@
 'use strict';
 
 const adminUserDb = require('../models/adminUserDb');
-const { OWNER_ROLE, ADMIN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE } = require('./adminAuth');
-const ALLOWED_ROLES = new Set([OWNER_ROLE, ADMIN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE]);
-const ALLOWED_LOCATION_ACCESS = new Set(['all', 'resort-only']);
+const { ADMIN_ROLE, FREE_ROLE, PREMIUM_ROLE } = require('./adminAuth');
+const ALLOWED_ROLES = new Set([ADMIN_ROLE, FREE_ROLE, PREMIUM_ROLE]);
 const { config } = require('../config');
-const BOOTSTRAP_EMAIL = config.backend.ownerEmail;
+const BOOTSTRAP_EMAIL = config.backend.adminEmail;
 
 async function listUsers(request, response, next) {
   try {
@@ -19,30 +18,29 @@ async function listUsers(request, response, next) {
 
 async function createUser(request, response, next) {
   try {
-    const { email, name, roles, locationAccess, adminAccess } = request.body || {};
+    const { email, name, roles, subscriptionExpiresAt } = request.body || {};
     if (!email) {
       return response.status(400).send('email is required');
     }
-    const normalizedEmail = String(email).trim().toLowerCase();
-    if (BOOTSTRAP_EMAIL && normalizedEmail === BOOTSTRAP_EMAIL) {
-      return response.status(403).send('Owner is managed via bootstrap email');
+    if (!name || !String(name).trim()) {
+      return response.status(400).send('name is required');
     }
+    if (Array.isArray(roles) && roles.length > 1) {
+      return response.status(400).send('Only one role is allowed');
+    }
+    const normalizedEmail = String(email).trim().toLowerCase();
     const existing = await adminUserDb.findOne({ email: normalizedEmail });
     if (existing) {
       return response.status(400).send('User already exists');
     }
     const parsedRoles = parseRoles(roles);
-    if (parsedRoles.includes(OWNER_ROLE)) {
-      return response.status(403).send('Cannot create owner via API');
-    }
-    const parsedAccess = parseLocationAccess(locationAccess);
-    const parsedAdminAccess = parseAdminAccess(adminAccess);
+    const nextRoles = parsedRoles.length ? parsedRoles : [FREE_ROLE];
+    const nextExpiry = nextRoles.includes(ADMIN_ROLE) ? null : parseSubscriptionExpiry(subscriptionExpiresAt);
     const user = await adminUserDb.create({
       email: normalizedEmail,
-      name: name ? String(name).trim() : '',
-      roles: parsedRoles.length ? parsedRoles : [LEVEL1_ROLE],
-      locationAccess: parsedAccess || 'all',
-      adminAccess: parsedAdminAccess,
+      name: String(name).trim(),
+      roles: nextRoles,
+      subscriptionExpiresAt: nextExpiry,
       status: 'active',
     });
     return response.status(201).send(user);
@@ -55,38 +53,34 @@ async function createUser(request, response, next) {
 async function updateUser(request, response, next) {
   try {
     const { id } = request.params;
-    const { name, roles, status, locationAccess, adminAccess } = request.body || {};
+    const { name, roles, status, subscriptionExpiresAt } = request.body || {};
     const update = {};
-    if (name !== undefined) update.name = String(name || '').trim();
-    if (roles !== undefined) {
-      const parsedRoles = parseRoles(roles);
-      if (parsedRoles.includes(OWNER_ROLE)) {
-        return response.status(403).send('Cannot assign owner role');
+    if (name !== undefined) {
+      const trimmed = String(name || '').trim();
+      if (!trimmed) {
+        return response.status(400).send('name is required');
       }
-      update.roles = parsedRoles.length ? parsedRoles : [LEVEL1_ROLE];
+      update.name = trimmed;
+    }
+    if (roles !== undefined) {
+      if (Array.isArray(roles) && roles.length > 1) {
+        return response.status(400).send('Only one role is allowed');
+      }
+      const parsedRoles = parseRoles(roles);
+      update.roles = parsedRoles.length ? parsedRoles : [FREE_ROLE];
     }
     if (status === 'active' || status === 'suspended') {
       update.status = status;
     }
-    if (locationAccess !== undefined) {
-      const parsedAccess = parseLocationAccess(locationAccess);
-      if (parsedAccess) {
-        update.locationAccess = parsedAccess;
-      }
+    if (subscriptionExpiresAt !== undefined) {
+      update.subscriptionExpiresAt = parseSubscriptionExpiry(subscriptionExpiresAt);
     }
-    if (adminAccess !== undefined) {
-      update.adminAccess = parseAdminAccess(adminAccess);
+    if (update.roles && update.roles.includes(ADMIN_ROLE)) {
+      update.subscriptionExpiresAt = null;
     }
     const existing = await adminUserDb.findById(id);
     if (!existing) {
       return response.status(404).send('User not found');
-    }
-    const isOwner = (existing.roles || []).includes(OWNER_ROLE) || (BOOTSTRAP_EMAIL && existing.email === BOOTSTRAP_EMAIL);
-    if (isOwner) {
-      update.roles = [OWNER_ROLE];
-      update.status = 'active';
-      update.locationAccess = 'all';
-      update.adminAccess = true;
     }
     if (!Object.keys(update).length) {
       return response.status(400).send('No valid fields provided');
@@ -105,9 +99,6 @@ async function deleteUser(request, response, next) {
     const user = await adminUserDb.findById(id);
     if (!user) {
       return response.status(404).send('User not found');
-    }
-    if ((user.roles && user.roles.includes(OWNER_ROLE)) || (BOOTSTRAP_EMAIL && user.email === BOOTSTRAP_EMAIL)) {
-      return response.status(403).send('Cannot delete owner');
     }
     await adminUserDb.findByIdAndDelete(id);
     return response.status(204).send();
@@ -132,14 +123,9 @@ function parseRoles(roles) {
     .slice(0, 1);
 }
 
-function parseLocationAccess(value) {
-  if (!value) return '';
-  const normalized = String(value).trim();
-  return ALLOWED_LOCATION_ACCESS.has(normalized) ? normalized : '';
-}
-
-function parseAdminAccess(value) {
-  if (value === undefined || value === null) return false;
-  if (typeof value === 'boolean') return value;
-  return String(value).trim().toLowerCase() === 'true';
+function parseSubscriptionExpiry(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
 }

@@ -482,7 +482,7 @@ async function handleCreateAlert(request, response) {
   if (!user) {
     return response.status(403).send({ error: 'Forbidden' });
   }
-  const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1');
+  const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free');
   const limit = getPowAlertLimitForRole(role);
   if (limit >= 0) {
     const existingCount = await powAlertDb.countDocuments({ userId: user.id });
@@ -568,7 +568,7 @@ async function handleCheckAlerts(request, response) {
   if (!user) {
     return response.status(403).send({ error: 'Forbidden' });
   }
-  const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1');
+  const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free');
   if (!canCheckPow(role)) {
     return response.status(403).send({ error: 'Check Pow Now not allowed for this subscription' });
   }

@@ -34,6 +34,7 @@ async function handleGetPreferences(request, response) {
     return response.status(404).send({ error: 'User not found' });
   }
   return response.status(200).send({
+    name: record.name || '',
     favorites: (record.favoriteLocations || []).map((id) => String(id)),
     homeResortId: record.homeResortId ? String(record.homeResortId) : '',
     units: record.unitsPreference || '',
@@ -47,6 +48,11 @@ async function handleUpdatePreferences(request, response) {
   }
   const favorites = normalizeFavoriteIds(request.body?.favorites);
   const homeResortId = String(request.body?.homeResortId || '').trim();
+  const nameInput = request.body?.name;
+  const nextName = nameInput === undefined ? undefined : String(nameInput || '').trim();
+  if (nextName !== undefined && !nextName) {
+    return response.status(400).send({ error: 'Name is required' });
+  }
   const role = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'guest');
   const favoriteLimit = getFavoriteLimitForRole(role);
   const limitedFavorites = favoriteLimit >= 0 ? favorites.slice(0, favoriteLimit) : favorites;
@@ -58,11 +64,15 @@ async function handleUpdatePreferences(request, response) {
   }
   record.favoriteLocations = limitedFavorites;
   record.homeResortId = nextHomeResortId;
+  if (nextName !== undefined) {
+    record.name = nextName;
+  }
   if (units) {
     record.unitsPreference = units;
   }
   await record.save();
   return response.status(200).send({
+    name: record.name || '',
     favorites: limitedFavorites.map((id) => String(id)),
     homeResortId: nextHomeResortId ? String(nextHomeResortId) : '',
     units: record.unitsPreference || '',

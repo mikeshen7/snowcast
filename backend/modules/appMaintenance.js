@@ -3,6 +3,7 @@
 const hourlyWeatherDb = require('../models/hourlyWeatherDb');
 const weatherApi = require('./weatherApi');
 const appConfig = require('./appConfig');
+const roleConfig = require('./roleConfig');
 const { refreshLocationsCache, getCachedLocations } = require('./locations');
 const powAlerts = require('./powAlerts');
 
@@ -42,8 +43,8 @@ async function fetchAllWeather(options = {}) {
   }
 }
 
-// backfillAllWeather fetches historical windows (and optionally future data).
-async function backfillAllWeather(daysBack = appConfig.values().DB_BACKFILL_DAYS, { includeFuture = false } = {}) {
+// backfillAllWeather fetches historical windows for all locations.
+async function backfillAllWeather(daysBack = appConfig.values().DB_BACKFILL_DAYS) {
   try {
     const config = appConfig.values();
     const endDate = formatDate(new Date());
@@ -51,17 +52,44 @@ async function backfillAllWeather(daysBack = appConfig.values().DB_BACKFILL_DAYS
     console.log(JSON.stringify({
       event: 'weather_backfill_start',
       daysBack,
-      includeFuture,
       startDate,
       endDate,
     }));
     await fetchAllWeather({ startDate, endDate, context: 'backfill' });
-    if (includeFuture) {
-      await fetchAllWeather({ context: 'forecast' });
-    }
   } catch (error) {
     console.error('*** backfillAllWeather error:', error.message);
   }
+}
+
+async function backfillLocations({ locationIds = [] } = {}) {
+  const config = appConfig.values();
+  const endDate = formatDate(new Date());
+  const startDate = formatDate(new Date(Date.now() - config.DB_BACKFILL_DAYS * config.MS_PER_DAY));
+  let locations = getCachedLocations();
+  if (!locations || locations.length === 0) {
+    locations = await refreshLocationsCache();
+  }
+  const wanted = new Set((locationIds || []).map((id) => String(id)));
+  const selected = (locations || []).filter((loc) => wanted.has(String(loc._id)));
+  console.log(JSON.stringify({
+    event: 'weather_backfill_manual',
+    locationCount: selected.length,
+    startDate,
+    endDate,
+  }));
+  for (const location of selected) {
+    try {
+      await weatherApi.fetchLocation(location, { startDate, endDate, context: 'backfill' });
+    } catch (err) {
+      console.log(JSON.stringify({
+        event: 'weather_backfill_error',
+        locationId: String(location._id),
+        name: location.name,
+        error: err.message,
+      }));
+    }
+  }
+  return { count: selected.length };
 }
 
 // removeOrphanHourlyWeather deletes hourly docs for deleted locations.
@@ -106,7 +134,6 @@ function startMaintenance() {
   console.log('Starting maintenance loops');
   removeOrphanHourlyWeather();
   removeOldHourlyWeather();
-  backfillAllWeather(appConfig.values().DB_BACKFILL_DAYS, { includeFuture: true });
 
   const config = appConfig.values();
   const hourMs = config.MS_PER_DAY / 24;
@@ -115,6 +142,7 @@ function startMaintenance() {
   setInterval(fetchAllWeather, config.DB_FETCH_INTERVAL_HOURS * hourMs);
   setInterval(() => backfillAllWeather(config.DB_BACKFILL_DAYS), config.DB_BACKFILL_INTERVAL_HOURS * hourMs);
   setInterval(appConfig.refreshConfigCache, config.CONFIG_REFRESH_INTERVAL_HOURS * hourMs);
+  setInterval(roleConfig.refreshRoleCache, config.CONFIG_REFRESH_INTERVAL_HOURS * hourMs);
   setInterval(() => {
     powAlerts.checkAllAlerts().catch((err) => {
       console.error('*** pow alert schedule error:', err.message);
@@ -125,6 +153,7 @@ function startMaintenance() {
 module.exports = {
   fetchAllWeather,
   backfillAllWeather,
+  backfillLocations,
   removeOrphanHourlyWeather,
   removeOldHourlyWeather,
   startMaintenance,

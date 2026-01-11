@@ -60,10 +60,10 @@ export function getUserPreferences() {
   return apiFetch('/user/preferences');
 }
 
-export function updateUserPreferences({ favorites, homeResortId, units }) {
+export function updateUserPreferences({ favorites, homeResortId, units, name }) {
   return apiFetch('/user/preferences', {
     method: 'PUT',
-    body: { favorites, homeResortId, units },
+    body: { favorites, homeResortId, units, name },
   });
 }
 

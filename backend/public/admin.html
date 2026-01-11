@@ -61,6 +61,47 @@
     .hidden { display: none !important; }
     .auth-gate { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     .auth-gate input { min-width: 240px; }
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(13, 27, 42, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      z-index: 1000;
+    }
+    .modal-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.25rem;
+      width: min(520px, 100%);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .pagination-controls .status {
+      margin-top: 0;
+      line-height: 1.2;
+    }
+    .backfill-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .stacked-label {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+    }
   </style>
 </head>
 <body>
@@ -172,30 +213,7 @@
 
     <div id="locationsTab" class="tab-panel">
       <h2>Locations</h2>
-      <h3>Add Location</h3>
-      <form id="locationForm" class="flex-row">
-        <label>Name<input type="text" id="newName" required /></label>
-        <label>Latitude<input type="number" step="any" id="newLat" required /></label>
-        <label>Longitude<input type="number" step="any" id="newLon" required /></label>
-        <label>Time Zone
-          <select id="newTz" required></select>
-        </label>
-        <label>Is Ski Resort?
-          <select id="newResort">
-            <option value="false">No</option>
-            <option value="true">Yes</option>
-          </select>
-        </label>
-        <input type="hidden" id="editingId" />
-        <div class="form-actions">
-          <button type="submit" id="saveLocationBtn">Add</button>
-          <button type="button" id="cancelEditBtn" style="display:none;">Cancel</button>
-        </div>
-        <div class="derived-meta">
-          <div>Country: <span id="derivedCountry">Unknown</span></div>
-          <div>Region: <span id="derivedRegion">-</span></div>
-        </div>
-      </form>
+      <div id="backfillStatus" class="status"></div>
 
       <form id="locationSearchForm" class="flex-row">
         <label class="query-group">
@@ -211,6 +229,22 @@
             <option value="false">No</option>
           </select>
         </label>
+        <button type="button" id="openAddLocationBtn">Add Location</button>
+        <button type="button" id="openBackfillBtn">Backfill Weather</button>
+        <div class="pagination-controls" style="margin-left:auto; display:flex; align-items:center; gap:0.5rem;">
+          <label>
+            Per page:
+            <select id="locationPageSize">
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </label>
+          <button type="button" id="locationPrevPage">Prev</button>
+          <button type="button" id="locationNextPage">Next</button>
+          <span id="locationPageInfo" class="status" style="margin-left:0.25rem; align-self:center;"></span>
+        </div>
       </form>
       <table id="locationsTable" style="display:none;">
         <thead>
@@ -233,26 +267,10 @@
     <div id="apiKeysTab" class="tab-panel">
       <h2>API Keys</h2>
       <p>Issue client API keys and manage rate limits. Copy new keys immediately&mdash;they are shown once.</p>
-      <form id="apiClientForm" class="flex-row">
-        <input type="hidden" id="apiClientEditingId" />
-        <label>Name<input type="text" id="apiClientName" required /></label>
-        <label>Email<input type="email" id="apiClientEmail" placeholder="client@example.com" /></label>
-        <label>Plan<input type="text" id="apiClientPlan" placeholder="free/pro/enterprise" /></label>
-        <label>Rate / min<input type="number" min="1" id="apiClientRateLimit" placeholder="60" /></label>
-        <label>Daily quota<input type="number" min="1" id="apiClientDailyQuota" placeholder="5000" /></label>
-        <label>Metadata
-          <input type="text" id="apiClientMetadata" placeholder='Optional JSON, e.g. {"notes":"beta"}' />
-        </label>
-        <label id="apiClientRegenerateRow" class="hidden">
-          <input type="checkbox" id="apiClientRegenerateKey" />
-          Regenerate API key
-        </label>
-        <div class="form-actions">
-          <button type="submit" id="apiClientSubmitBtn">Create API Key</button>
-          <button type="button" id="apiClientCancelBtn" style="display:none;">Cancel</button>
-          <button type="button" id="apiClientsRefreshBtn">Refresh</button>
-        </div>
-      </form>
+      <div class="form-actions" style="margin-bottom:0.5rem;">
+        <button type="button" id="openApiClientBtn">Add API Key</button>
+        <button type="button" id="apiClientsRefreshBtn">Refresh</button>
+      </div>
       <div id="apiClientKeyPanel" class="card" style="margin-top:1rem; display:none; background:#fffbe6; border:1px solid #f0d97a;">
         <strong>API key (copy now, shown once):</strong>
         <div style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
@@ -306,51 +324,18 @@
 
     <div id="usersTab" class="tab-panel">
       <h2>Admin Users</h2>
-      <form id="adminUserForm" class="flex-row">
-        <input type="hidden" id="adminUserId" />
-        <label>Email<input type="email" id="adminUserEmail" required placeholder="admin@example.com" /></label>
-        <label>Name<input type="text" id="adminUserName" placeholder="Optional" /></label>
-        <label>Role
-          <select id="adminUserRoleSelect">
-            <option value="level1">Starter</option>
-            <option value="level2">Plus</option>
-            <option value="level3">Pro</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
-        <label>Backend Admin
-          <select id="adminUserAdminAccess">
-            <option value="false">No</option>
-            <option value="true">Yes</option>
-          </select>
-        </label>
-        <label>Status
-          <select id="adminUserStatus">
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-          </select>
-        </label>
-        <label>Location Type
-          <select id="adminUserLocationAccess">
-            <option value="all">All Locations</option>
-            <option value="resort-only">Resort Only</option>
-          </select>
-        </label>
-        <div class="form-actions">
-          <button type="submit" id="adminUserSubmitBtn">Save User</button>
-          <button type="button" id="adminUserCancelBtn" style="display:none;">Cancel</button>
-          <button type="button" id="adminUserRefreshBtn">Refresh</button>
-        </div>
-      </form>
+      <div class="form-actions" style="margin-bottom:0.5rem;">
+        <button type="button" id="openAdminUserBtn">Add User</button>
+        <button type="button" id="adminUserRefreshBtn">Refresh</button>
+      </div>
       <div id="adminUsersStatus" class="status"></div>
       <table id="adminUsersTable" style="display:none;">
         <thead>
           <tr>
             <th>Email</th>
             <th>Name</th>
-            <th>Frontend Role</th>
-            <th>Backend Admin</th>
-            <th>Location Type</th>
+            <th>Role</th>
+            <th>Premium Expires</th>
             <th>Status</th>
             <th>Last Login</th>
             <th>Created</th>
@@ -372,7 +357,8 @@
             <th>Hourly Access</th>
             <th>Pow Alerts Limit</th>
             <th>Check Pow Now</th>
-            <th>Forecast Range</th>
+            <th>Forecast Back (days)</th>
+            <th>Forecast Forward (days)</th>
             <th>Notes</th>
           </tr>
         </thead>
@@ -386,35 +372,18 @@
 
     <div id="discountCodesTab" class="tab-panel">
       <h2>Discount Codes</h2>
-      <form id="discountCodeForm" class="flex-row">
-        <input type="hidden" id="discountCodeId" />
-        <label>Code<input type="text" id="discountCodeValue" required placeholder="snowcast" /></label>
-        <label>Role
-          <select id="discountCodeRole">
-            <option value="level1">level1</option>
-            <option value="level2">level2</option>
-            <option value="level3" selected>level3</option>
-            <option value="admin">admin</option>
-          </select>
-        </label>
-        <label>Active
-          <select id="discountCodeActive">
-            <option value="true" selected>Yes</option>
-            <option value="false">No</option>
-          </select>
-        </label>
-        <div class="form-actions">
-          <button type="submit" id="discountCodeSubmitBtn">Save Code</button>
-          <button type="button" id="discountCodeCancelBtn" style="display:none;">Cancel</button>
-          <button type="button" id="discountCodeRefreshBtn">Refresh</button>
-        </div>
-      </form>
+      <div class="form-actions" style="margin-bottom:0.5rem;">
+        <button type="button" id="openDiscountCodeBtn">Add Code</button>
+        <button type="button" id="discountCodeRefreshBtn">Refresh</button>
+      </div>
       <div id="discountCodeStatus" class="status"></div>
       <table id="discountCodesTable" style="display:none;">
         <thead>
           <tr>
             <th>Code</th>
-            <th>Role</th>
+            <th>Duration</th>
+            <th>Max Uses</th>
+            <th>Used</th>
             <th>Active</th>
             <th>Created</th>
             <th></th>
@@ -426,12 +395,143 @@
     </div>
   </div>
   <div id="toast" class="toast"></div>
+  <div id="addLocationModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="addLocationModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="addLocationModalTitle">Add Location</h3>
+      </div>
+      <form id="addLocationForm" class="backfill-form">
+        <input type="hidden" id="modalEditingId" />
+        <label>Name<input type="text" id="modalNewName" required /></label>
+        <label>Latitude<input type="number" step="any" id="modalNewLat" required /></label>
+        <label>Longitude<input type="number" step="any" id="modalNewLon" required /></label>
+        <label>Time Zone
+          <select id="modalNewTz" required></select>
+        </label>
+        <label>Is Ski Resort?
+          <select id="modalNewResort">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="ghost" id="closeAddLocationBtn">Close</button>
+          <button type="submit" id="modalSaveLocationBtn">Add Location</button>
+        </div>
+        <div class="derived-meta">
+          <div>Country: <span id="modalDerivedCountry">Unknown</span></div>
+          <div>Region: <span id="modalDerivedRegion">-</span></div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="backfillModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="backfillModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="backfillModalTitle">Backfill Weather</h3>
+      </div>
+      <form id="backfillForm" class="backfill-form">
+        <label class="stacked-label">Locations
+          <select id="backfillLocations" multiple size="8"></select>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="ghost" id="closeBackfillBtn">Close</button>
+          <button type="submit" id="backfillSubmitBtn">Run Backfill</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="adminUserModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminUserModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="adminUserModalTitle">Add User</h3>
+      </div>
+      <form id="adminUserForm" class="backfill-form">
+        <input type="hidden" id="adminUserId" />
+        <label>Email<input type="email" id="adminUserEmail" required placeholder="admin@example.com" /></label>
+        <label>Name<input type="text" id="adminUserName" placeholder="Required" /></label>
+        <label>Role
+          <select id="adminUserRoleSelect">
+            <option value="free">Free</option>
+            <option value="premium">Premium</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="adminUserStatus">
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </label>
+        <label>Premium Expires
+          <input type="date" id="adminUserSubscriptionExpires" />
+        </label>
+        <div class="form-actions">
+          <button type="button" class="ghost" id="adminUserCancelBtn">Close</button>
+          <button type="submit" id="adminUserSubmitBtn">Save User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="discountCodeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="discountCodeModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="discountCodeModalTitle">Add Discount Code</h3>
+      </div>
+      <form id="discountCodeForm" class="backfill-form">
+        <input type="hidden" id="discountCodeId" />
+        <label>Code<input type="text" id="discountCodeValue" required placeholder="snowcast" /></label>
+        <label>Duration (months)
+          <input type="number" id="discountCodeDuration" min="1" value="3" />
+        </label>
+        <label>Max uses
+          <input type="number" id="discountCodeMaxUses" min="0" value="0" />
+        </label>
+        <label>Active
+          <select id="discountCodeActive">
+            <option value="true" selected>Yes</option>
+            <option value="false">No</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="ghost" id="discountCodeCancelBtn">Close</button>
+          <button type="submit" id="discountCodeSubmitBtn">Save Code</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="apiClientModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="apiClientModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="apiClientModalTitle">Add API Key</h3>
+      </div>
+      <form id="apiClientForm" class="backfill-form">
+        <input type="hidden" id="apiClientEditingId" />
+        <label>Name<input type="text" id="apiClientName" required /></label>
+        <label>Email<input type="email" id="apiClientEmail" placeholder="client@example.com" /></label>
+        <label>Plan<input type="text" id="apiClientPlan" placeholder="free/pro/enterprise" /></label>
+        <label>Rate / min<input type="number" min="1" id="apiClientRateLimit" placeholder="60" /></label>
+        <label>Daily quota<input type="number" min="1" id="apiClientDailyQuota" placeholder="5000" /></label>
+        <label>Metadata
+          <input type="text" id="apiClientMetadata" placeholder='Optional JSON, e.g. {"notes":"beta"}' />
+        </label>
+        <label id="apiClientRegenerateRow" class="hidden">
+          <input type="checkbox" id="apiClientRegenerateKey" />
+          Regenerate API key
+        </label>
+        <div class="form-actions">
+          <button type="button" class="ghost" id="apiClientCancelBtn">Close</button>
+          <button type="submit" id="apiClientSubmitBtn">Create API Key</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
   <script>
     const { DateTime } = luxon;
     let sessionUser = null;
-    let sessionLocationAccess = 'all';
+    let cachedLocations = [];
     let hasLoadedApiClients = false;
     const authGate = document.getElementById('authGate');
     const appContent = document.getElementById('appContent');
@@ -484,15 +584,7 @@
     const tbody = table.querySelector('tbody');
     const statusEl = document.getElementById('status');
     document.getElementById('loadBtn').addEventListener('click', () => loadConfig());
-    const timezoneSelect = document.getElementById('newTz');
-    const derivedCountryEl = document.getElementById('derivedCountry');
-    const derivedRegionEl = document.getElementById('derivedRegion');
-    const latInput = document.getElementById('newLat');
-    const lonInput = document.getElementById('newLon');
     const DEFAULT_TIME_ZONE = 'America/Los_Angeles';
-    populateTimeZones();
-    latInput.addEventListener('blur', fetchDerivedMetadata);
-    lonInput.addEventListener('blur', fetchDerivedMetadata);
 
     async function bootstrap() {
       try {
@@ -544,7 +636,13 @@
     }
 
     function formatRoleLabel(code) {
-      const normalized = code === 'basic' ? 'level1' : code === 'standard' ? 'level2' : code === 'advanced' ? 'level3' : code;
+      const normalized = code === 'basic' || code === 'level1'
+        ? 'free'
+        : code === 'standard' || code === 'level2' || code === 'advanced' || code === 'level3'
+          ? 'premium'
+          : code === 'owner'
+            ? 'admin'
+            : code;
       return roleLabels[normalized] || normalized || '';
     }
 
@@ -558,6 +656,8 @@
         const hourlyId = `role-hourly-${role.code}`;
         const powAlertsId = `role-pow-${role.code}`;
         const checkPowId = `role-checkpow-${role.code}`;
+        const forecastBackId = `role-forecast-back-${role.code}`;
+        const forecastForwardId = `role-forecast-forward-${role.code}`;
         const favoriteValue = Number.isFinite(roleFavoriteLimits[role.code])
           ? roleFavoriteLimits[role.code]
           : DEFAULT_ROLE_FAVORITES[role.code] ?? 0;
@@ -566,6 +666,13 @@
           ? rolePowAlerts[role.code]
           : DEFAULT_ROLE_POW_ALERTS[role.code] ?? 0;
         const checkPowValue = Boolean(roleCheckPow[role.code]);
+        const forecastWindow = roleForecast[role.code] || DEFAULT_ROLE_FORECAST[role.code];
+        const forecastBackValue = Number.isFinite(forecastWindow?.back)
+          ? forecastWindow.back
+          : DEFAULT_ROLE_FORECAST[role.code]?.back ?? 0;
+        const forecastForwardValue = Number.isFinite(forecastWindow?.forward)
+          ? forecastWindow.forward
+          : DEFAULT_ROLE_FORECAST[role.code]?.forward ?? 0;
         tr.innerHTML = `
           <td>${role.code}</td>
           <td>
@@ -583,7 +690,12 @@
           <td>
             <input type="checkbox" id="${checkPowId}" ${checkPowValue ? 'checked' : ''} />
           </td>
-          <td>${role.limit}</td>
+          <td>
+            <input type="number" id="${forecastBackId}" value="${forecastBackValue}" class="value-input" />
+          </td>
+          <td>
+            <input type="number" id="${forecastForwardId}" value="${forecastForwardValue}" class="value-input" />
+          </td>
           <td>${role.notes}</td>
         `;
         rolesTableBody.appendChild(tr);
@@ -595,9 +707,8 @@
       const current = adminUserRoleSelect.value;
       adminUserRoleSelect.innerHTML = '';
       const options = [
-        { value: 'level1', label: formatRoleLabel('level1') },
-        { value: 'level2', label: formatRoleLabel('level2') },
-        { value: 'level3', label: formatRoleLabel('level3') },
+        { value: 'free', label: formatRoleLabel('free') },
+        { value: 'premium', label: formatRoleLabel('premium') },
         { value: 'admin', label: formatRoleLabel('admin') },
       ];
       options.forEach((opt) => {
@@ -606,62 +717,44 @@
         option.textContent = opt.label;
         adminUserRoleSelect.appendChild(option);
       });
-      adminUserRoleSelect.value = current || 'level1';
+      adminUserRoleSelect.value = current || 'free';
     }
 
-    function applyRoleLabelsFromConfig(entries) {
+    function applyRoleLabelsFromConfig(roles) {
       const labelMap = { ...DEFAULT_ROLE_LABELS };
       const favoritesMap = { ...DEFAULT_ROLE_FAVORITES };
       const hourlyMap = { ...DEFAULT_ROLE_HOURLY };
       const powAlertsMap = { ...DEFAULT_ROLE_POW_ALERTS };
       const checkPowMap = { ...DEFAULT_ROLE_CHECK_POW };
-      (entries || []).forEach((entry) => {
-        if (!entry?.key) return;
-        if (entry.key === 'ROLE_LABEL_GUEST') labelMap.guest = String(entry.value || labelMap.guest);
-        if (entry.key === 'ROLE_LABEL_LEVEL1') labelMap.level1 = String(entry.value || labelMap.level1);
-        if (entry.key === 'ROLE_LABEL_LEVEL2') labelMap.level2 = String(entry.value || labelMap.level2);
-        if (entry.key === 'ROLE_LABEL_LEVEL3') labelMap.level3 = String(entry.value || labelMap.level3);
-        if (entry.key === 'ROLE_LABEL_ADMIN') labelMap.admin = String(entry.value || labelMap.admin);
-        if (entry.key === 'ROLE_LABEL_OWNER') labelMap.owner = String(entry.value || labelMap.owner);
-        if (entry.key === 'ROLE_FAVORITES_GUEST') favoritesMap.guest = Number(entry.value);
-        if (entry.key === 'ROLE_FAVORITES_LEVEL1') favoritesMap.level1 = Number(entry.value);
-        if (entry.key === 'ROLE_FAVORITES_LEVEL2') favoritesMap.level2 = Number(entry.value);
-        if (entry.key === 'ROLE_FAVORITES_LEVEL3') favoritesMap.level3 = Number(entry.value);
-        if (entry.key === 'ROLE_FAVORITES_ADMIN') favoritesMap.admin = Number(entry.value);
-        if (entry.key === 'ROLE_FAVORITES_OWNER') favoritesMap.owner = Number(entry.value);
-        if (entry.key === 'ROLE_HOURLY_GUEST') hourlyMap.guest = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_HOURLY_LEVEL1') hourlyMap.level1 = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_HOURLY_LEVEL2') hourlyMap.level2 = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_HOURLY_LEVEL3') hourlyMap.level3 = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_HOURLY_ADMIN') hourlyMap.admin = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_HOURLY_OWNER') hourlyMap.owner = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_POW_ALERTS_LEVEL1') powAlertsMap.level1 = Number(entry.value);
-        if (entry.key === 'ROLE_POW_ALERTS_LEVEL2') powAlertsMap.level2 = Number(entry.value);
-        if (entry.key === 'ROLE_POW_ALERTS_LEVEL3') powAlertsMap.level3 = Number(entry.value);
-        if (entry.key === 'ROLE_POW_ALERTS_ADMIN') powAlertsMap.admin = Number(entry.value);
-        if (entry.key === 'ROLE_POW_ALERTS_OWNER') powAlertsMap.owner = Number(entry.value);
-        if (entry.key === 'ROLE_CHECK_POW_GUEST') checkPowMap.guest = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_CHECK_POW_LEVEL1') checkPowMap.level1 = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_CHECK_POW_LEVEL2') checkPowMap.level2 = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_CHECK_POW_LEVEL3') checkPowMap.level3 = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_CHECK_POW_ADMIN') checkPowMap.admin = Number(entry.value) === 1;
-        if (entry.key === 'ROLE_CHECK_POW_OWNER') checkPowMap.owner = Number(entry.value) === 1;
+      const forecastMap = { ...DEFAULT_ROLE_FORECAST };
+      (roles || []).forEach((role) => {
+        if (!role?.code) return;
+        const code = role.code;
+        if (!labelMap[code]) return;
+        if (role.label) labelMap[code] = String(role.label || labelMap[code]);
+        if (role.favoritesLimit !== undefined) favoritesMap[code] = Number(role.favoritesLimit);
+        if (role.hourlyAccess !== undefined) hourlyMap[code] = Boolean(role.hourlyAccess);
+        if (role.powAlertsLimit !== undefined) powAlertsMap[code] = Number(role.powAlertsLimit);
+        if (role.checkPowAccess !== undefined) checkPowMap[code] = Boolean(role.checkPowAccess);
+        if (role.forecastBack !== undefined) forecastMap[code].back = Number(role.forecastBack);
+        if (role.forecastForward !== undefined) forecastMap[code].forward = Number(role.forecastForward);
       });
       roleLabels = labelMap;
       roleFavoriteLimits = favoritesMap;
       roleHourlyAccess = hourlyMap;
       rolePowAlerts = powAlertsMap;
       roleCheckPow = checkPowMap;
+      roleForecast = forecastMap;
       renderRolesTable();
       updateRoleSelectOptions();
     }
 
     async function loadRoleLabels() {
       try {
-        const res = await authFetch('/admin/config');
+        const res = await authFetch('/admin/roles');
         if (!res.ok) throw new Error('Failed to load role labels');
-        const entries = await res.json();
-        applyRoleLabelsFromConfig(entries);
+        const roles = await res.json();
+        applyRoleLabelsFromConfig(Array.isArray(roles) ? roles : []);
       } catch (err) {
         renderRolesTable();
         updateRoleSelectOptions();
@@ -676,49 +769,36 @@
         const hourlyInput = document.getElementById(`role-hourly-${role.code}`);
         const powAlertsInput = document.getElementById(`role-pow-${role.code}`);
         const checkPowInput = document.getElementById(`role-checkpow-${role.code}`);
+        const forecastBackInput = document.getElementById(`role-forecast-back-${role.code}`);
+        const forecastForwardInput = document.getElementById(`role-forecast-forward-${role.code}`);
         if (!input) return;
         const value = input.value.trim();
-        if (role.code === 'guest') updates.push({ key: 'ROLE_LABEL_GUEST', value });
-        if (role.code === 'level1') updates.push({ key: 'ROLE_LABEL_LEVEL1', value });
-        if (role.code === 'level2') updates.push({ key: 'ROLE_LABEL_LEVEL2', value });
-        if (role.code === 'level3') updates.push({ key: 'ROLE_LABEL_LEVEL3', value });
-        if (role.code === 'admin') updates.push({ key: 'ROLE_LABEL_ADMIN', value });
-        if (role.code === 'owner') updates.push({ key: 'ROLE_LABEL_OWNER', value });
+        const payload = {
+          label: value,
+        };
         if (favoritesInput) {
           const favoritesValue = Number(favoritesInput.value);
-          if (role.code === 'guest') updates.push({ key: 'ROLE_FAVORITES_GUEST', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
-          if (role.code === 'level1') updates.push({ key: 'ROLE_FAVORITES_LEVEL1', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
-          if (role.code === 'level2') updates.push({ key: 'ROLE_FAVORITES_LEVEL2', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
-          if (role.code === 'level3') updates.push({ key: 'ROLE_FAVORITES_LEVEL3', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
-          if (role.code === 'admin') updates.push({ key: 'ROLE_FAVORITES_ADMIN', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
-          if (role.code === 'owner') updates.push({ key: 'ROLE_FAVORITES_OWNER', value: Number.isFinite(favoritesValue) ? favoritesValue : 0 });
+          payload.favoritesLimit = Number.isFinite(favoritesValue) ? favoritesValue : 0;
         }
         if (hourlyInput) {
-          const hourlyValue = hourlyInput.checked ? 1 : 0;
-          if (role.code === 'guest') updates.push({ key: 'ROLE_HOURLY_GUEST', value: hourlyValue });
-          if (role.code === 'level1') updates.push({ key: 'ROLE_HOURLY_LEVEL1', value: hourlyValue });
-          if (role.code === 'level2') updates.push({ key: 'ROLE_HOURLY_LEVEL2', value: hourlyValue });
-          if (role.code === 'level3') updates.push({ key: 'ROLE_HOURLY_LEVEL3', value: hourlyValue });
-          if (role.code === 'admin') updates.push({ key: 'ROLE_HOURLY_ADMIN', value: hourlyValue });
-          if (role.code === 'owner') updates.push({ key: 'ROLE_HOURLY_OWNER', value: hourlyValue });
+          payload.hourlyAccess = Boolean(hourlyInput.checked);
+        }
+        if (forecastBackInput) {
+          const forecastBackValue = Number(forecastBackInput.value);
+          payload.forecastBack = Number.isFinite(forecastBackValue) ? forecastBackValue : 0;
+        }
+        if (forecastForwardInput) {
+          const forecastForwardValue = Number(forecastForwardInput.value);
+          payload.forecastForward = Number.isFinite(forecastForwardValue) ? forecastForwardValue : 0;
         }
         if (powAlertsInput) {
           const powValue = Number(powAlertsInput.value);
-          if (role.code === 'level1') updates.push({ key: 'ROLE_POW_ALERTS_LEVEL1', value: Number.isFinite(powValue) ? powValue : 0 });
-          if (role.code === 'level2') updates.push({ key: 'ROLE_POW_ALERTS_LEVEL2', value: Number.isFinite(powValue) ? powValue : 0 });
-          if (role.code === 'level3') updates.push({ key: 'ROLE_POW_ALERTS_LEVEL3', value: Number.isFinite(powValue) ? powValue : 0 });
-          if (role.code === 'admin') updates.push({ key: 'ROLE_POW_ALERTS_ADMIN', value: Number.isFinite(powValue) ? powValue : 0 });
-          if (role.code === 'owner') updates.push({ key: 'ROLE_POW_ALERTS_OWNER', value: Number.isFinite(powValue) ? powValue : 0 });
+          payload.powAlertsLimit = Number.isFinite(powValue) ? powValue : 0;
         }
         if (checkPowInput) {
-          const checkPowValue = checkPowInput.checked ? 1 : 0;
-          if (role.code === 'guest') updates.push({ key: 'ROLE_CHECK_POW_GUEST', value: checkPowValue });
-          if (role.code === 'level1') updates.push({ key: 'ROLE_CHECK_POW_LEVEL1', value: checkPowValue });
-          if (role.code === 'level2') updates.push({ key: 'ROLE_CHECK_POW_LEVEL2', value: checkPowValue });
-          if (role.code === 'level3') updates.push({ key: 'ROLE_CHECK_POW_LEVEL3', value: checkPowValue });
-          if (role.code === 'admin') updates.push({ key: 'ROLE_CHECK_POW_ADMIN', value: checkPowValue });
-          if (role.code === 'owner') updates.push({ key: 'ROLE_CHECK_POW_OWNER', value: checkPowValue });
+          payload.checkPowAccess = Boolean(checkPowInput.checked);
         }
+        updates.push({ code: role.code, payload });
       });
       return updates;
     }
@@ -729,18 +809,33 @@
       const hourlyMap = { ...DEFAULT_ROLE_HOURLY };
       const powAlertsMap = { ...DEFAULT_ROLE_POW_ALERTS };
       const checkPowMap = { ...DEFAULT_ROLE_CHECK_POW };
+      const forecastMap = { ...DEFAULT_ROLE_FORECAST };
       ROLE_LIMITS.forEach((role) => {
         const labelInput = document.getElementById(`role-label-${role.code}`);
         const favoritesInput = document.getElementById(`role-fav-${role.code}`);
         const hourlyInput = document.getElementById(`role-hourly-${role.code}`);
         const powAlertsInput = document.getElementById(`role-pow-${role.code}`);
         const checkPowInput = document.getElementById(`role-checkpow-${role.code}`);
+        const forecastBackInput = document.getElementById(`role-forecast-back-${role.code}`);
+        const forecastForwardInput = document.getElementById(`role-forecast-forward-${role.code}`);
         if (labelInput) labelMap[role.code] = labelInput.value.trim() || labelMap[role.code];
         if (favoritesInput) {
           const value = Number(favoritesInput.value);
           favoritesMap[role.code] = Number.isFinite(value) ? value : favoritesMap[role.code];
         }
         if (hourlyInput) hourlyMap[role.code] = Boolean(hourlyInput.checked);
+        if (forecastBackInput) {
+          const value = Number(forecastBackInput.value);
+          if (Number.isFinite(value)) {
+            forecastMap[role.code].back = value;
+          }
+        }
+        if (forecastForwardInput) {
+          const value = Number(forecastForwardInput.value);
+          if (Number.isFinite(value)) {
+            forecastMap[role.code].forward = value;
+          }
+        }
         if (powAlertsInput) {
           const value = Number(powAlertsInput.value);
           powAlertsMap[role.code] = Number.isFinite(value) ? value : powAlertsMap[role.code];
@@ -752,6 +847,7 @@
       roleHourlyAccess = hourlyMap;
       rolePowAlerts = powAlertsMap;
       roleCheckPow = checkPowMap;
+      roleForecast = forecastMap;
       renderRolesTable();
       updateRoleSelectOptions();
     }
@@ -762,10 +858,10 @@
       try {
         const updates = getRoleLabelUpdates();
         for (const entry of updates) {
-          await authFetch('/admin/config/' + entry.key, {
+          await authFetch('/admin/roles/' + entry.code, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value: entry.value }),
+            body: JSON.stringify(entry.payload),
           });
         }
         roleLabelsStatus.textContent = 'Saved';
@@ -778,9 +874,8 @@
 
     function setAuthenticated(user) {
       sessionUser = user;
-      sessionLocationAccess = user?.locationAccess || 'all';
       const roles = Array.isArray(user?.roles) ? user.roles : [];
-      const isBackendAdmin = Boolean(user?.adminAccess) || roles.includes('owner');
+      const isBackendAdmin = roles.includes('admin');
       authGate.classList.add('hidden');
       appContent.classList.remove('hidden');
       const statusText = sessionStatus?.querySelector('span');
@@ -809,7 +904,6 @@
         hideTab('discountCodesTab');
         disableLocationWrites();
       }
-      applyLocationAccessUI();
       loadLocations();
       loadHourlyLocationsDropdown();
       if (storedTabId) {
@@ -827,28 +921,17 @@
     }
 
     function disableLocationWrites() {
-      if (locationForm) {
-        locationForm.classList.add('hidden');
+      if (openAddLocationBtn) {
+        openAddLocationBtn.style.display = 'none';
       }
-      const addHeading = document.querySelector('#locationsTab h3');
-      if (addHeading) addHeading.style.display = 'none';
+      if (openBackfillBtn) {
+        openBackfillBtn.style.display = 'none';
+      }
       const locationSearchForm = document.getElementById('locationSearchForm');
       if (locationSearchForm) {
         locationSearchForm.querySelectorAll('input, select, button').forEach((el) => {
           el.disabled = false;
         });
-      }
-    }
-
-    function applyLocationAccessUI() {
-      const resortLabel = locationResortSelect ? locationResortSelect.parentElement : null;
-      if (sessionLocationAccess === 'resort-only') {
-        if (locationResortSelect) {
-          locationResortSelect.value = 'true';
-        }
-        if (resortLabel) resortLabel.style.display = 'none';
-      } else {
-        if (resortLabel) resortLabel.style.display = '';
       }
     }
 
@@ -960,10 +1043,34 @@
     const locationTable = document.getElementById('locationsTable');
     const locationBody = locationTable.querySelector('tbody');
     const locationStatus = document.getElementById('locationStatus');
-    const locationForm = document.getElementById('locationForm');
-    const saveLocationBtn = document.getElementById('saveLocationBtn');
-    const cancelEditBtn = document.getElementById('cancelEditBtn');
-    const editingIdInput = document.getElementById('editingId');
+    const addLocationModal = document.getElementById('addLocationModal');
+    const openAddLocationBtn = document.getElementById('openAddLocationBtn');
+    const closeAddLocationBtn = document.getElementById('closeAddLocationBtn');
+    const addLocationForm = document.getElementById('addLocationForm');
+    const addLocationModalTitle = document.getElementById('addLocationModalTitle');
+    const modalEditingId = document.getElementById('modalEditingId');
+    const modalNameInput = document.getElementById('modalNewName');
+    const modalLatInput = document.getElementById('modalNewLat');
+    const modalLonInput = document.getElementById('modalNewLon');
+    const modalTzSelect = document.getElementById('modalNewTz');
+    const modalResortSelect = document.getElementById('modalNewResort');
+    const modalDerivedCountryEl = document.getElementById('modalDerivedCountry');
+    const modalDerivedRegionEl = document.getElementById('modalDerivedRegion');
+    const modalSaveLocationBtn = document.getElementById('modalSaveLocationBtn');
+    const backfillModal = document.getElementById('backfillModal');
+    const openBackfillBtn = document.getElementById('openBackfillBtn');
+    const closeBackfillBtn = document.getElementById('closeBackfillBtn');
+    const backfillForm = document.getElementById('backfillForm');
+    const backfillLocations = document.getElementById('backfillLocations');
+    const backfillStatus = document.getElementById('backfillStatus');
+    const backfillSubmitBtn = document.getElementById('backfillSubmitBtn');
+    populateModalTimeZones();
+    if (modalLatInput) modalLatInput.addEventListener('blur', fetchModalDerivedMetadata);
+    if (modalLonInput) modalLonInput.addEventListener('blur', fetchModalDerivedMetadata);
+    const locationPageSize = document.getElementById('locationPageSize');
+    const locationPrevPage = document.getElementById('locationPrevPage');
+    const locationNextPage = document.getElementById('locationNextPage');
+    const locationPageInfo = document.getElementById('locationPageInfo');
     const hourlySelect = document.getElementById('hourlyLocationSelect');
     const hourlyStartInput = document.getElementById('hourlyStartDate');
     const hourlyEndInput = document.getElementById('hourlyEndDate');
@@ -1000,14 +1107,22 @@
     const apiClientAccessPanel = document.getElementById('apiClientAccessPanel');
     const apiClientAccessStatus = document.getElementById('apiClientAccessStatus');
     const apiClientAccessList = document.getElementById('apiClientAccessList');
+    const apiClientModal = document.getElementById('apiClientModal');
+    const apiClientModalTitle = document.getElementById('apiClientModalTitle');
+    const openApiClientBtn = document.getElementById('openApiClientBtn');
+    const adminUserModal = document.getElementById('adminUserModal');
+    const openAdminUserBtn = document.getElementById('openAdminUserBtn');
+    const adminUserModalTitle = document.getElementById('adminUserModalTitle');
+    const discountCodeModal = document.getElementById('discountCodeModal');
+    const openDiscountCodeBtn = document.getElementById('openDiscountCodeBtn');
+    const discountCodeModalTitle = document.getElementById('discountCodeModalTitle');
     const adminUserForm = document.getElementById('adminUserForm');
     const adminUserId = document.getElementById('adminUserId');
     const adminUserEmail = document.getElementById('adminUserEmail');
     const adminUserName = document.getElementById('adminUserName');
     const adminUserRoleSelect = document.getElementById('adminUserRoleSelect');
     const adminUserStatusSelect = document.getElementById('adminUserStatus');
-    const adminUserLocationAccess = document.getElementById('adminUserLocationAccess');
-    const adminUserAdminAccess = document.getElementById('adminUserAdminAccess');
+    const adminUserSubscriptionExpires = document.getElementById('adminUserSubscriptionExpires');
     const adminUserSubmitBtn = document.getElementById('adminUserSubmitBtn');
     const adminUserCancelBtn = document.getElementById('adminUserCancelBtn');
     const adminUserRefreshBtn = document.getElementById('adminUserRefreshBtn');
@@ -1020,7 +1135,8 @@
     const discountCodeForm = document.getElementById('discountCodeForm');
     const discountCodeId = document.getElementById('discountCodeId');
     const discountCodeValue = document.getElementById('discountCodeValue');
-    const discountCodeRole = document.getElementById('discountCodeRole');
+    const discountCodeDuration = document.getElementById('discountCodeDuration');
+    const discountCodeMaxUses = document.getElementById('discountCodeMaxUses');
     const discountCodeActive = document.getElementById('discountCodeActive');
     const discountCodeSubmitBtn = document.getElementById('discountCodeSubmitBtn');
     const discountCodeCancelBtn = document.getElementById('discountCodeCancelBtn');
@@ -1031,55 +1147,50 @@
 
     const DEFAULT_ROLE_LABELS = {
       guest: 'Guest',
-      level1: 'Starter',
-      level2: 'Plus',
-      level3: 'Pro',
+      free: 'Free',
+      premium: 'Premium',
       admin: 'Admin',
-      owner: 'Owner',
     };
 
     const DEFAULT_ROLE_FAVORITES = {
       guest: 0,
-      level1: 1,
-      level2: 3,
-      level3: -1,
+      free: 3,
+      premium: -1,
       admin: -1,
-      owner: -1,
     };
 
     const DEFAULT_ROLE_HOURLY = {
       guest: false,
-      level1: false,
-      level2: true,
-      level3: true,
+      free: false,
+      premium: true,
       admin: true,
-      owner: true,
     };
 
     const DEFAULT_ROLE_POW_ALERTS = {
-      level1: 1,
-      level2: 3,
-      level3: 10,
-      admin: -1,
-      owner: -1,
+      guest: 1,
+      free: 1,
+      premium: 10,
+      admin: 10,
     };
 
     const DEFAULT_ROLE_CHECK_POW = {
       guest: false,
-      level1: false,
-      level2: false,
-      level3: true,
+      free: false,
+      premium: false,
       admin: true,
-      owner: true,
+    };
+    const DEFAULT_ROLE_FORECAST = {
+      guest: { back: 2, forward: 7 },
+      free: { back: 2, forward: 7 },
+      premium: { back: -1, forward: -1 },
+      admin: { back: -1, forward: -1 },
     };
 
     const ROLE_LIMITS = [
-      { code: 'guest', limit: 'Today + 1 day', notes: 'Default for signed-out users.' },
-      { code: 'level1', limit: '3 days back / 3 days forward', notes: 'Entry subscription level.' },
-      { code: 'level2', limit: '7 days back / 7 days forward', notes: 'Expanded forecast window.' },
-      { code: 'level3', limit: 'Unlimited', notes: 'Full forecast access.' },
+      { code: 'guest', limit: '2 days back / 7 days forward', notes: 'Default for signed-out users.' },
+      { code: 'free', limit: '2 days back / 7 days forward', notes: 'Default signed-in tier.' },
+      { code: 'premium', limit: 'Unlimited', notes: 'Full forecast access.' },
       { code: 'admin', limit: 'Unlimited', notes: 'Full forecast access.' },
-      { code: 'owner', limit: 'Unlimited', notes: 'Full forecast access.' },
     ];
 
     let roleLabels = { ...DEFAULT_ROLE_LABELS };
@@ -1087,25 +1198,112 @@
     let roleHourlyAccess = { ...DEFAULT_ROLE_HOURLY };
     let rolePowAlerts = { ...DEFAULT_ROLE_POW_ALERTS };
     let roleCheckPow = { ...DEFAULT_ROLE_CHECK_POW };
+    let roleForecast = { ...DEFAULT_ROLE_FORECAST };
+    let activeModal = null;
+    let lastFocusedElement = null;
+    let locationPage = 1;
+    let locationTotal = 0;
 
     document.getElementById('locationSearchForm').addEventListener('submit', (event) => {
       event.preventDefault();
+      locationPage = 1;
       loadLocations();
     });
     const locationResortSelect = document.getElementById('locationResort');
     if (locationResortSelect) {
-      locationResortSelect.addEventListener('change', () => loadLocations());
+      locationResortSelect.addEventListener('change', () => {
+        locationPage = 1;
+        loadLocations();
+      });
     }
-    locationForm.addEventListener('submit', submitLocation);
-    cancelEditBtn.addEventListener('click', () => {
-      resetLocationForm();
-      setLocationStatus('Edit cancelled');
-    });
-    window.addEventListener('pageshow', (event) => {
-      if (event.persisted || performance.getEntriesByType('navigation')[0]?.type === 'reload') {
-        resetLocationForm();
-      }
-    });
+    if (locationPageSize) {
+      locationPageSize.addEventListener('change', () => {
+        locationPage = 1;
+        loadLocations();
+      });
+    }
+    if (locationPrevPage) {
+      locationPrevPage.addEventListener('click', () => {
+        if (locationPage > 1) {
+          locationPage -= 1;
+          loadLocations();
+        }
+      });
+    }
+    if (locationNextPage) {
+      locationNextPage.addEventListener('click', () => {
+        locationPage += 1;
+        loadLocations();
+      });
+    }
+    if (backfillForm) {
+      backfillForm.addEventListener('submit', submitBackfill);
+    }
+    if (openAddLocationBtn) {
+      openAddLocationBtn.addEventListener('click', () => openAddLocationModal());
+    }
+    if (closeAddLocationBtn) {
+      closeAddLocationBtn.addEventListener('click', () => closeAddLocationModal());
+    }
+    if (addLocationModal) {
+      addLocationModal.addEventListener('click', (event) => {
+        if (event.target === addLocationModal) {
+          closeAddLocationModal();
+        }
+      });
+    }
+    if (addLocationForm) {
+      addLocationForm.addEventListener('submit', submitModalLocation);
+    }
+    if (openBackfillBtn) {
+      openBackfillBtn.addEventListener('click', () => openBackfillModal());
+    }
+    if (closeBackfillBtn) {
+      closeBackfillBtn.addEventListener('click', () => closeBackfillModal());
+    }
+    if (backfillModal) {
+      backfillModal.addEventListener('click', (event) => {
+        if (event.target === backfillModal) {
+          closeBackfillModal();
+        }
+      });
+    }
+    if (openDiscountCodeBtn) {
+      openDiscountCodeBtn.addEventListener('click', () => openDiscountCodeModal());
+    }
+    if (discountCodeCancelBtn) {
+      discountCodeCancelBtn.addEventListener('click', () => closeDiscountCodeModal());
+    }
+    if (discountCodeModal) {
+      discountCodeModal.addEventListener('click', (event) => {
+        if (event.target === discountCodeModal) {
+          closeDiscountCodeModal();
+        }
+      });
+    }
+    if (openApiClientBtn) {
+      openApiClientBtn.addEventListener('click', () => openApiClientModal());
+    }
+    if (apiClientModal) {
+      apiClientModal.addEventListener('click', (event) => {
+        if (event.target === apiClientModal) {
+          closeApiClientModal();
+        }
+      });
+    }
+    if (openAdminUserBtn) {
+      openAdminUserBtn.addEventListener('click', () => openAdminUserModal());
+    }
+    if (adminUserCancelBtn) {
+      adminUserCancelBtn.addEventListener('click', () => closeAdminUserModal());
+    }
+    if (adminUserModal) {
+      adminUserModal.addEventListener('click', (event) => {
+        if (event.target === adminUserModal) {
+          closeAdminUserModal();
+        }
+      });
+    }
     setDefaultHourlyDates();
     setDefaultDailyDates();
     loadHourlyBtn.addEventListener('click', loadHourlyWeather);
@@ -1124,7 +1322,7 @@
       apiClientsRefreshBtn.addEventListener('click', () => loadApiClients());
     }
     if (apiClientCancelBtn) {
-      apiClientCancelBtn.addEventListener('click', resetApiClientForm);
+      apiClientCancelBtn.addEventListener('click', () => closeApiClientModal());
     }
     if (apiClientCopyBtn) {
       apiClientCopyBtn.addEventListener('click', copyApiClientKey);
@@ -1135,11 +1333,13 @@
     if (adminUserForm) {
       adminUserForm.addEventListener('submit', submitAdminUser);
     }
+    if (adminUserRoleSelect) {
+      adminUserRoleSelect.addEventListener('change', () => {
+        toggleSubscriptionExpiryInput(adminUserRoleSelect.value);
+      });
+    }
     if (adminUserRefreshBtn) {
       adminUserRefreshBtn.addEventListener('click', () => loadAdminUsers());
-    }
-    if (adminUserCancelBtn) {
-      adminUserCancelBtn.addEventListener('click', resetAdminUserForm);
     }
     if (discountCodeForm) {
       discountCodeForm.addEventListener('submit', submitDiscountCode);
@@ -1148,26 +1348,47 @@
       discountCodeRefreshBtn.addEventListener('click', () => loadDiscountCodes());
     }
     if (discountCodeCancelBtn) {
-      discountCodeCancelBtn.addEventListener('click', resetDiscountCodeForm);
+      discountCodeCancelBtn.addEventListener('click', () => closeDiscountCodeModal());
+    }
+
+    function updateLocationPagination(pageSize, resultsCount) {
+      if (!locationPrevPage || !locationNextPage || !locationPageInfo) return;
+      const totalPages = locationTotal && pageSize ? Math.ceil(locationTotal / pageSize) : null;
+      locationPrevPage.disabled = locationPage <= 1;
+      if (totalPages) {
+        locationNextPage.disabled = locationPage >= totalPages;
+        locationPageInfo.textContent = `Page ${locationPage} of ${totalPages}`;
+      } else {
+        locationNextPage.disabled = resultsCount < pageSize;
+        locationPageInfo.textContent = `Page ${locationPage}`;
+      }
     }
 
     async function loadLocations() {
       const query = document.getElementById('locationQuery').value.trim();
       const resort = document.getElementById('locationResort').value;
+      const pageSize = locationPageSize ? Number(locationPageSize.value) : 20;
       const params = new URLSearchParams();
       if (query) params.set('q', query);
-      if (sessionLocationAccess === 'resort-only') {
-        params.set('isSkiResort', 'true');
-      } else if (resort) {
+      if (resort) {
         params.set('isSkiResort', resort);
       }
+      params.set('limit', String(pageSize));
+      params.set('page', String(locationPage));
       setLocationStatus('Loading locations...');
       try {
         const res = await authFetch('/locations?' + params.toString());
         if (!res.ok) throw new Error('Failed to load locations');
         const data = await res.json();
-        renderLocations(data);
-        setLocationStatus(`Loaded ${data.length} locations`);
+        const results = Array.isArray(data) ? data : data.results || [];
+        if (!results.length && locationPage > 1) {
+          locationPage -= 1;
+          return loadLocations();
+        }
+        locationTotal = Array.isArray(data) ? results.length : Number(data.total) || 0;
+        renderLocations(results);
+        updateLocationPagination(pageSize, results.length);
+        setLocationStatus(`Loaded ${results.length} locations`);
       } catch (err) {
         setLocationStatus(err.message);
         showToast(err.message, true);
@@ -1175,12 +1396,14 @@
     }
 
     function renderLocations(locations) {
+      cachedLocations = Array.isArray(locations) ? locations : [];
+      populateBackfillLocations();
       locationBody.innerHTML = '';
       const sorted = [...locations].sort((a, b) => {
         return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
       });
       sorted.forEach((loc) => {
-        const isReadOnly = !(Array.isArray(sessionUser?.roles) && (sessionUser.roles.includes('owner') || sessionUser.roles.includes('admin')));
+        const isReadOnly = !(Array.isArray(sessionUser?.roles) && sessionUser.roles.includes('admin'));
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${loc.name}</td>
@@ -1208,6 +1431,227 @@
       locationTable.style.display = locations.length ? 'table' : 'none';
     }
 
+    function populateBackfillLocations() {
+      if (!backfillLocations) return;
+      const selected = new Set(Array.from(backfillLocations.selectedOptions || []).map((opt) => opt.value));
+      backfillLocations.innerHTML = '';
+      const allOption = document.createElement('option');
+      allOption.value = '__all__';
+      allOption.textContent = 'All Locations';
+      if (selected.has(allOption.value)) {
+        allOption.selected = true;
+      }
+      backfillLocations.appendChild(allOption);
+      (cachedLocations || [])
+        .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+        .forEach((loc) => {
+          const option = document.createElement('option');
+          option.value = loc.id;
+          option.textContent = loc.name || 'Unnamed';
+          if (selected.has(option.value)) {
+            option.selected = true;
+          }
+          backfillLocations.appendChild(option);
+        });
+    }
+
+    function getFocusableElements(container) {
+      if (!container) return [];
+      return Array.from(
+        container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+    }
+
+    function handleModalKeydown(event) {
+      if (!activeModal) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (activeModal === addLocationModal) {
+          closeAddLocationModal();
+        } else if (activeModal === backfillModal) {
+          closeBackfillModal();
+        }
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = getFocusableElements(activeModal);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    function openModal(modal, focusSelector) {
+      if (!modal) return;
+      lastFocusedElement = document.activeElement;
+      activeModal = modal;
+      modal.classList.remove('hidden');
+      document.addEventListener('keydown', handleModalKeydown);
+      const focusTarget = focusSelector ? modal.querySelector(focusSelector) : null;
+      if (focusTarget) {
+        focusTarget.focus();
+        return;
+      }
+      const focusable = getFocusableElements(modal);
+      if (focusable[0]) focusable[0].focus();
+    }
+
+    function closeModal(modal) {
+      if (!modal) return;
+      modal.classList.add('hidden');
+      if (activeModal === modal) {
+        activeModal = null;
+        document.removeEventListener('keydown', handleModalKeydown);
+        if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+          lastFocusedElement.focus();
+        }
+        lastFocusedElement = null;
+      }
+    }
+
+    function openBackfillModal() {
+      if (!backfillModal) return;
+      loadBackfillResorts();
+      openModal(backfillModal, '#backfillStartDate');
+    }
+
+    function closeBackfillModal() {
+      closeModal(backfillModal);
+    }
+
+    function openDiscountCodeModal() {
+      if (!discountCodeModal) return;
+      if (discountCodeModalTitle) discountCodeModalTitle.textContent = 'Add Discount Code';
+      if (discountCodeSubmitBtn) discountCodeSubmitBtn.textContent = 'Save Code';
+      if (discountCodeForm) discountCodeForm.reset();
+      if (discountCodeId) discountCodeId.value = '';
+      if (discountCodeValue) discountCodeValue.disabled = false;
+      if (discountCodeDuration) discountCodeDuration.value = 3;
+      if (discountCodeMaxUses) discountCodeMaxUses.value = 0;
+      if (discountCodeActive) discountCodeActive.value = 'true';
+      if (discountCodeStatus) discountCodeStatus.textContent = '';
+      openModal(discountCodeModal, '#discountCodeValue');
+    }
+
+    function closeDiscountCodeModal() {
+      if (!discountCodeModal) return;
+      closeModal(discountCodeModal);
+      if (discountCodeForm) discountCodeForm.reset();
+      if (discountCodeId) discountCodeId.value = '';
+      if (discountCodeValue) discountCodeValue.disabled = false;
+      if (discountCodeSubmitBtn) discountCodeSubmitBtn.textContent = 'Save Code';
+      if (discountCodeStatus) discountCodeStatus.textContent = '';
+    }
+
+    function openApiClientModal() {
+      if (!apiClientModal) return;
+      if (apiClientModalTitle) apiClientModalTitle.textContent = 'Add API Key';
+      if (apiClientSubmitBtn) apiClientSubmitBtn.textContent = 'Create API Key';
+      if (apiClientForm) apiClientForm.reset();
+      if (apiClientEditingId) apiClientEditingId.value = '';
+      if (apiClientRegenerateRow) apiClientRegenerateRow.classList.add('hidden');
+      if (apiClientRegenerateKey) apiClientRegenerateKey.checked = false;
+      if (apiClientResult) apiClientResult.textContent = '';
+      openModal(apiClientModal, '#apiClientName');
+    }
+
+    function closeApiClientModal() {
+      if (!apiClientModal) return;
+      closeModal(apiClientModal);
+      if (apiClientForm) apiClientForm.reset();
+      if (apiClientEditingId) apiClientEditingId.value = '';
+      if (apiClientRegenerateRow) apiClientRegenerateRow.classList.add('hidden');
+      if (apiClientRegenerateKey) apiClientRegenerateKey.checked = false;
+      if (apiClientSubmitBtn) apiClientSubmitBtn.textContent = 'Create API Key';
+      if (apiClientResult) apiClientResult.textContent = '';
+    }
+
+    function openAdminUserModal() {
+      if (!adminUserModal) return;
+      if (adminUserModalTitle) adminUserModalTitle.textContent = 'Add User';
+      if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
+      if (adminUserForm) adminUserForm.reset();
+      if (adminUserId) adminUserId.value = '';
+      if (adminUserEmail) adminUserEmail.disabled = false;
+      if (adminUserRoleSelect) adminUserRoleSelect.value = 'free';
+      if (adminUserStatusSelect) adminUserStatusSelect.value = 'active';
+      if (adminUserSubscriptionExpires) adminUserSubscriptionExpires.value = '';
+      toggleSubscriptionExpiryInput(adminUserRoleSelect?.value);
+      if (adminUsersStatus) adminUsersStatus.textContent = '';
+      openModal(adminUserModal, '#adminUserEmail');
+    }
+
+    function closeAdminUserModal() {
+      if (!adminUserModal) return;
+      closeModal(adminUserModal);
+      if (adminUserForm) adminUserForm.reset();
+      if (adminUserId) adminUserId.value = '';
+      if (adminUserEmail) adminUserEmail.disabled = false;
+      if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
+      if (adminUsersStatus) adminUsersStatus.textContent = '';
+    }
+
+    async function submitBackfill(event) {
+      event.preventDefault();
+      if (!backfillStatus) return;
+      const selectedIds = Array.from(backfillLocations?.selectedOptions || []).map((opt) => opt.value);
+      const useAllLocations = selectedIds.includes('__all__');
+      const resortIds = selectedIds.filter((id) => id !== '__all__');
+      const locationIds = useAllLocations
+        ? (cachedLocations || []).map((loc) => loc.id)
+        : resortIds;
+      if (!locationIds.length) {
+        backfillStatus.textContent = 'Select at least one location or choose All Locations.';
+        return;
+      }
+      backfillStatus.textContent = 'Starting backfill...';
+      if (backfillSubmitBtn) backfillSubmitBtn.disabled = true;
+      try {
+        const res = await authFetch('/admin/backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            locationIds,
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Backfill failed');
+        }
+        const payload = await res.json();
+        backfillStatus.textContent = '';
+        closeBackfillModal();
+        showToast(`Backfill started for ${payload.count || 0} locations.`);
+      } catch (err) {
+        backfillStatus.textContent = err.message;
+        showToast(err.message, true);
+      } finally {
+        if (backfillSubmitBtn) backfillSubmitBtn.disabled = false;
+      }
+    }
+
+    async function loadBackfillResorts() {
+      if (!backfillStatus) return;
+      backfillStatus.textContent = 'Loading resorts for backfill...';
+      try {
+        const res = await authFetch('/admin/locations/backfill');
+        if (!res.ok) throw new Error('Failed to load locations');
+        const data = await res.json();
+        cachedLocations = Array.isArray(data) ? data : [];
+        populateBackfillLocations();
+        backfillStatus.textContent = '';
+      } catch (err) {
+        backfillStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
     async function deleteLocation(id) {
       if (!id) return;
       if (!confirm('Delete this location?')) return;
@@ -1226,15 +1670,16 @@
       }
     }
 
-    async function submitLocation(event) {
+    async function submitModalLocation(event) {
       event.preventDefault();
-      const editingId = editingIdInput.value;
+      if (!modalNameInput || !modalLatInput || !modalLonInput || !modalTzSelect || !modalResortSelect) return;
+      const editingId = modalEditingId ? modalEditingId.value : '';
       const payload = {
-        name: document.getElementById('newName').value.trim(),
-        lat: Number(latInput.value),
-        lon: Number(lonInput.value),
-        tz_iana: timezoneSelect.value,
-        isSkiResort: document.getElementById('newResort').value === 'true',
+        name: modalNameInput.value.trim(),
+        lat: Number(modalLatInput.value),
+        lon: Number(modalLonInput.value),
+        tz_iana: modalTzSelect.value,
+        isSkiResort: modalResortSelect.value === 'true',
       };
       if (!payload.name || Number.isNaN(payload.lat) || Number.isNaN(payload.lon) || !payload.tz_iana) {
         return setLocationStatus('All required fields must be filled');
@@ -1243,9 +1688,7 @@
       try {
         const res = await authFetch(editingId ? '/locations/' + editingId : '/locations', {
           method: editingId ? 'PUT' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
         if (!res.ok) {
@@ -1254,7 +1697,7 @@
         }
         setLocationStatus(editingId ? 'Location updated' : 'Location created');
         showToast(editingId ? 'Location updated successfully.' : 'Location created successfully.');
-        resetLocationForm();
+        closeAddLocationModal();
         loadLocations();
       } catch (err) {
         setLocationStatus(err.message);
@@ -1262,29 +1705,45 @@
       }
     }
 
-    function startEditLocation(location) {
-      document.getElementById('newName').value = location.name || '';
-      latInput.value = location.lat ?? '';
-      lonInput.value = location.lon ?? '';
-      setTimeZoneValue(location.tz_iana);
-      document.getElementById('newResort').value = location.isSkiResort ? 'true' : 'false';
-      editingIdInput.value = location.id;
-      saveLocationBtn.textContent = 'Save';
-      cancelEditBtn.style.display = 'inline-block';
-      setLocationStatus(`Editing ${location.name}`);
-      derivedCountryEl.textContent = location.country || 'Unknown';
-      derivedRegionEl.textContent = location.region || '-';
+    function openAddLocationModal() {
+      if (!addLocationModal) return;
+      if (addLocationModalTitle) addLocationModalTitle.textContent = 'Add Location';
+      if (modalSaveLocationBtn) modalSaveLocationBtn.textContent = 'Add Location';
+      if (modalEditingId) modalEditingId.value = '';
+      if (addLocationForm) addLocationForm.reset();
+      if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = 'Unknown';
+      if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = '-';
+      populateModalTimeZones();
+      setModalTimeZoneValue(DEFAULT_TIME_ZONE);
+      openModal(addLocationModal, '#modalNewName');
     }
 
-    function resetLocationForm() {
-      locationForm.reset();
-      document.getElementById('newResort').value = 'false';
-      setTimeZoneValue(DEFAULT_TIME_ZONE);
-      editingIdInput.value = '';
-      saveLocationBtn.textContent = 'Add';
-      cancelEditBtn.style.display = 'none';
-      derivedCountryEl.textContent = 'Unknown';
-      derivedRegionEl.textContent = '-';
+    function closeAddLocationModal() {
+      if (!addLocationModal) return;
+      closeModal(addLocationModal);
+      if (modalEditingId) modalEditingId.value = '';
+      if (addLocationForm) addLocationForm.reset();
+      if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = 'Unknown';
+      if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = '-';
+    }
+
+    function startEditLocation(location) {
+      if (!addLocationModal) return;
+      if (modalTzSelect && !modalTzSelect.options.length) {
+        populateModalTimeZones();
+      }
+      if (addLocationModalTitle) addLocationModalTitle.textContent = 'Edit Location';
+      if (modalSaveLocationBtn) modalSaveLocationBtn.textContent = 'Save Location';
+      if (modalEditingId) modalEditingId.value = location.id;
+      if (modalNameInput) modalNameInput.value = location.name || '';
+      if (modalLatInput) modalLatInput.value = location.lat ?? '';
+      if (modalLonInput) modalLonInput.value = location.lon ?? '';
+      setModalTimeZoneValue(location.tz_iana);
+      if (modalResortSelect) modalResortSelect.value = location.isSkiResort ? 'true' : 'false';
+      if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = location.country || 'Unknown';
+      if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = location.region || '-';
+      openModal(addLocationModal, '#modalNewName');
+      setLocationStatus(`Editing ${location.name}`);
     }
 
     function setLocationStatus(msg) {
@@ -1547,9 +2006,6 @@
       if (apiClientSubmitBtn) {
         apiClientSubmitBtn.textContent = 'Save Changes';
       }
-      if (apiClientCancelBtn) {
-        apiClientCancelBtn.style.display = 'inline-block';
-      }
       if (apiClientRegenerateRow) {
         apiClientRegenerateRow.classList.remove('hidden');
       }
@@ -1557,27 +2013,12 @@
         apiClientRegenerateKey.checked = false;
       }
       apiClientResult.textContent = `Editing ${client.name || client._id}`;
+      if (apiClientModalTitle) apiClientModalTitle.textContent = 'Edit API Key';
+      openModal(apiClientModal, '#apiClientName');
     }
 
     function resetApiClientForm() {
-      if (!apiClientForm) return;
-      apiClientForm.reset();
-      if (apiClientEditingId) {
-        apiClientEditingId.value = '';
-      }
-      if (apiClientSubmitBtn) {
-        apiClientSubmitBtn.textContent = 'Create API Key';
-      }
-      if (apiClientCancelBtn) {
-        apiClientCancelBtn.style.display = 'none';
-      }
-      if (apiClientRegenerateRow) {
-        apiClientRegenerateRow.classList.add('hidden');
-      }
-      if (apiClientRegenerateKey) {
-        apiClientRegenerateKey.checked = false;
-      }
-      apiClientResult.textContent = '';
+      closeApiClientModal();
     }
 
     function parseMetadataInput(value) {
@@ -1613,23 +2054,24 @@
       return option?.dataset?.tz || DEFAULT_TIME_ZONE;
     }
 
-    async function fetchDerivedMetadata() {
-      const lat = parseFloat(latInput.value);
-      const lon = parseFloat(lonInput.value);
+    async function fetchModalDerivedMetadata() {
+      if (!modalLatInput || !modalLonInput) return;
+      const lat = parseFloat(modalLatInput.value);
+      const lon = parseFloat(modalLonInput.value);
       if (Number.isNaN(lat) || Number.isNaN(lon)) {
-        derivedCountryEl.textContent = 'Unknown';
-        derivedRegionEl.textContent = '-';
+        if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = 'Unknown';
+        if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = '-';
         return;
       }
       try {
         const res = await authFetch(`/locations/lookup?lat=${lat}&lon=${lon}`);
         if (!res.ok) throw new Error('Lookup failed');
         const data = await res.json();
-        derivedCountryEl.textContent = data.country || 'Unknown';
-        derivedRegionEl.textContent = data.region || '-';
+        if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = data.country || 'Unknown';
+        if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = data.region || '-';
       } catch (err) {
-        derivedCountryEl.textContent = 'Unknown';
-        derivedRegionEl.textContent = '-';
+        if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = 'Unknown';
+        if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = '-';
       }
     }
 
@@ -1638,11 +2080,7 @@
         const res = await authFetch('/locations?limit=200');
         if (!res.ok) throw new Error('Failed to load locations');
         const data = await res.json();
-        const filtered = (data || []).filter((loc) => {
-          if (sessionLocationAccess === 'resort-only') return Boolean(loc.isSkiResort);
-          return true;
-        });
-        const sorted = filtered.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+        const sorted = (data || []).sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
         populateLocationSelect(hourlySelect, sorted);
         populateLocationSelect(dailySelect, sorted);
       } catch (err) {
@@ -1688,7 +2126,6 @@
       if (!adminUsersBody) return;
       adminUsersBody.innerHTML = '';
       (users || []).forEach((user) => {
-        const isOwner = Array.isArray(user.roles) && user.roles.includes('owner');
         const roleText = Array.isArray(user.roles) && user.roles.length
           ? user.roles.map((role) => formatRoleLabel(role)).join(', ')
           : '';
@@ -1697,29 +2134,28 @@
           <td>${user.email || ''}</td>
           <td>${user.name || ''}</td>
           <td>${roleText}</td>
-          <td>${user.adminAccess || isOwner ? 'Yes' : 'No'}</td>
-          <td>${user.locationAccess || 'all'}</td>
+          <td>${Array.isArray(user.roles) && user.roles.includes('admin') ? 'Never' : formatDateOnly(user.subscriptionExpiresAt)}</td>
           <td>${user.status || ''}</td>
           <td>${formatDateTimeLocal(user.lastLoginAt)}</td>
           <td>${formatDateTimeLocal(user.createdAt)}</td>
           <td>
-            <button type="button" class="admin-edit-btn" data-id="${user._id}" ${isOwner ? 'disabled' : ''}>Edit</button>
-            <button type="button" class="admin-toggle-btn" data-id="${user._id}" data-status="${user.status}" ${isOwner ? 'disabled' : ''}>
+            <button type="button" class="admin-edit-btn" data-id="${user._id}">Edit</button>
+            <button type="button" class="admin-toggle-btn" data-id="${user._id}" data-status="${user.status}">
               ${user.status === 'active' ? 'Suspend' : 'Activate'}
             </button>
-            <button type="button" class="admin-delete-btn" data-id="${user._id}" ${isOwner ? 'disabled' : ''}>Delete</button>
+            <button type="button" class="admin-delete-btn" data-id="${user._id}">Delete</button>
           </td>
         `;
         const editBtn = tr.querySelector('.admin-edit-btn');
-        if (editBtn && !isOwner) {
+        if (editBtn) {
           editBtn.addEventListener('click', () => startEditAdmin(user));
         }
         const toggleBtn = tr.querySelector('.admin-toggle-btn');
-        if (toggleBtn && !isOwner) {
+        if (toggleBtn) {
           toggleBtn.addEventListener('click', () => toggleAdminStatus(user));
         }
         const deleteBtn = tr.querySelector('.admin-delete-btn');
-        if (deleteBtn && !isOwner) {
+        if (deleteBtn) {
           deleteBtn.addEventListener('click', () => deleteAdmin(user));
         }
         adminUsersBody.appendChild(tr);
@@ -1735,11 +2171,9 @@
       const editingId = adminUserId?.value;
       const email = adminUserEmail?.value.trim();
       const name = adminUserName?.value.trim();
-      const isOwner = adminUserForm?.dataset?.isOwner === 'true';
-      const roles = adminUserRoleSelect ? [adminUserRoleSelect.value] : ['level1'];
+      const roles = adminUserRoleSelect ? [adminUserRoleSelect.value] : ['free'];
       const status = adminUserStatusSelect ? adminUserStatusSelect.value : 'active';
-      const locationAccess = adminUserLocationAccess ? adminUserLocationAccess.value : 'all';
-      const adminAccess = adminUserAdminAccess?.value === 'true';
+      const subscriptionExpiresAt = adminUserSubscriptionExpires?.value || '';
       if (!email) {
         adminUsersStatus.textContent = 'Email is required';
         return;
@@ -1749,8 +2183,8 @@
         const endpoint = editingId ? `/admin/users/${editingId}` : '/admin/users';
         const method = editingId ? 'PUT' : 'POST';
         const payload = editingId
-          ? buildAdminUpdatePayload({ name, roles, status, locationAccess, adminAccess, isOwner })
-          : { email, name, roles, locationAccess, adminAccess };
+          ? buildAdminUpdatePayload({ name, roles, status, subscriptionExpiresAt })
+          : { email, name, roles, subscriptionExpiresAt };
         const res = await authFetch(endpoint, {
           method,
           headers: { 'Content-Type': 'application/json' },
@@ -1795,7 +2229,6 @@
 
     function startEditAdmin(user) {
       if (!user) return;
-      const isOwner = Array.isArray(user.roles) && user.roles.includes('owner');
       if (adminUserId) adminUserId.value = user._id;
       if (adminUserEmail) {
         adminUserEmail.value = user.email || '';
@@ -1803,58 +2236,38 @@
       }
       if (adminUserName) adminUserName.value = user.name || '';
       if (adminUserRoleSelect) {
-        adminUserRoleSelect.value = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1';
+        adminUserRoleSelect.value = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free';
       }
       if (adminUserStatusSelect) {
         adminUserStatusSelect.value = user.status || 'active';
       }
-      if (adminUserLocationAccess) {
-        adminUserLocationAccess.value = user.locationAccess || 'all';
+      if (adminUserSubscriptionExpires) {
+        adminUserSubscriptionExpires.value = formatDateInputValue(user.subscriptionExpiresAt);
       }
-      if (adminUserAdminAccess) {
-        adminUserAdminAccess.value = user.adminAccess || isOwner ? 'true' : 'false';
-      }
-      if (adminUserForm) {
-        adminUserForm.dataset.isOwner = isOwner ? 'true' : 'false';
-      }
-      setOwnerFormState(isOwner);
+      toggleSubscriptionExpiryInput(adminUserRoleSelect?.value);
+      if (adminUserModalTitle) adminUserModalTitle.textContent = 'Edit User';
       if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
-      if (adminUserCancelBtn) adminUserCancelBtn.style.display = 'inline-block';
       adminUsersStatus.textContent = `Editing ${user.email || ''}`;
+      openModal(adminUserModal, '#adminUserName');
     }
 
     function resetAdminUserForm() {
-      if (adminUserForm) adminUserForm.reset();
-      if (adminUserId) adminUserId.value = '';
-      if (adminUserEmail) adminUserEmail.disabled = false;
-      if (adminUserRoleSelect) adminUserRoleSelect.value = 'level1';
-      if (adminUserStatusSelect) adminUserStatusSelect.value = 'active';
-      if (adminUserLocationAccess) adminUserLocationAccess.value = 'all';
-      if (adminUserAdminAccess) adminUserAdminAccess.value = 'false';
-      if (adminUserForm) delete adminUserForm.dataset.isOwner;
-      setOwnerFormState(false);
-      if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
-      if (adminUserCancelBtn) adminUserCancelBtn.style.display = 'none';
-      adminUsersStatus.textContent = '';
+      closeAdminUserModal();
     }
 
-    function buildAdminUpdatePayload({ name, roles, status, locationAccess, adminAccess, isOwner }) {
-      if (isOwner) {
-        return { name };
-      }
-      return { name, roles, status, locationAccess, adminAccess };
+    function buildAdminUpdatePayload({ name, roles, status, subscriptionExpiresAt }) {
+      return { name, roles, status, subscriptionExpiresAt };
     }
 
-    function setOwnerFormState(isOwner) {
-      if (adminUserRoleSelect) adminUserRoleSelect.disabled = isOwner;
-      if (adminUserAdminAccess) adminUserAdminAccess.disabled = isOwner;
-      if (adminUserStatusSelect) adminUserStatusSelect.disabled = isOwner;
-      if (adminUserLocationAccess) adminUserLocationAccess.disabled = isOwner;
-      if (isOwner) {
-        if (adminUserRoleSelect) adminUserRoleSelect.value = 'owner';
-        if (adminUserAdminAccess) adminUserAdminAccess.value = 'true';
-        if (adminUserStatusSelect) adminUserStatusSelect.value = 'active';
-        if (adminUserLocationAccess) adminUserLocationAccess.value = 'all';
+    function toggleSubscriptionExpiryInput(role) {
+      if (!adminUserSubscriptionExpires) return;
+      const isAdminRole = role === 'admin';
+      adminUserSubscriptionExpires.disabled = isAdminRole;
+      if (isAdminRole) {
+        adminUserSubscriptionExpires.value = '';
+        adminUserSubscriptionExpires.placeholder = 'Never';
+      } else {
+        adminUserSubscriptionExpires.placeholder = '';
       }
     }
 
@@ -1902,7 +2315,9 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${code.code || ''}</td>
-          <td>${formatRoleLabel(code.targetRole)}</td>
+          <td>${code.durationMonths ? `${code.durationMonths} mo` : '-'}</td>
+          <td>${Number.isFinite(code.maxUses) && code.maxUses > 0 ? code.maxUses : 'Unlimited'}</td>
+          <td>${Number.isFinite(code.usesCount) ? code.usesCount : 0}</td>
           <td>${code.active ? 'Yes' : 'No'}</td>
           <td>${formatDateTimeLocal(code.createdAt)}</td>
           <td>
@@ -1935,7 +2350,8 @@
       if (!discountCodeStatus) return;
       const editingId = discountCodeId?.value;
       const code = discountCodeValue?.value.trim();
-      const targetRole = discountCodeRole?.value || 'level3';
+      const durationMonths = discountCodeDuration?.value;
+      const maxUses = discountCodeMaxUses?.value;
       const active = discountCodeActive?.value !== 'false';
       if (!editingId && !code) {
         discountCodeStatus.textContent = 'Code is required';
@@ -1945,7 +2361,9 @@
       try {
         const endpoint = editingId ? `/admin/discount-codes/${editingId}` : '/admin/discount-codes';
         const method = editingId ? 'PUT' : 'POST';
-        const payload = editingId ? { targetRole, active } : { code, targetRole, active };
+        const payload = editingId
+          ? { durationMonths, maxUses, active }
+          : { code, durationMonths, maxUses, active };
         const res = await authFetch(endpoint, {
           method,
           headers: { 'Content-Type': 'application/json' },
@@ -1972,24 +2390,17 @@
         discountCodeValue.value = code.code || '';
         discountCodeValue.disabled = true;
       }
-      if (discountCodeRole) discountCodeRole.value = code.targetRole || 'level3';
+      if (discountCodeDuration) discountCodeDuration.value = code.durationMonths || 1;
+      if (discountCodeMaxUses) discountCodeMaxUses.value = Number.isFinite(code.maxUses) ? code.maxUses : 0;
       if (discountCodeActive) discountCodeActive.value = code.active ? 'true' : 'false';
+      if (discountCodeModalTitle) discountCodeModalTitle.textContent = 'Edit Discount Code';
       if (discountCodeSubmitBtn) discountCodeSubmitBtn.textContent = 'Save Code';
-      if (discountCodeCancelBtn) discountCodeCancelBtn.style.display = 'inline-block';
       discountCodeStatus.textContent = `Editing ${code.code || 'code'}`;
+      openModal(discountCodeModal, '#discountCodeDuration');
     }
 
     function resetDiscountCodeForm() {
-      if (discountCodeForm) discountCodeForm.reset();
-      if (discountCodeId) discountCodeId.value = '';
-      if (discountCodeValue) {
-        discountCodeValue.disabled = false;
-      }
-      if (discountCodeRole) discountCodeRole.value = 'level3';
-      if (discountCodeActive) discountCodeActive.value = 'true';
-      if (discountCodeSubmitBtn) discountCodeSubmitBtn.textContent = 'Save Code';
-      if (discountCodeCancelBtn) discountCodeCancelBtn.style.display = 'none';
-      discountCodeStatus.textContent = '';
+      closeDiscountCodeModal();
     }
 
     async function toggleDiscountCode(code) {
@@ -2212,9 +2623,25 @@
       }, 3500);
     }
 
-    function populateTimeZones() {
+    function populateModalTimeZones() {
+      if (!modalTzSelect) return;
       const zones = readAllTimeZones();
       const offsets = new Map();
+      const preferredZones = [
+        'America/Los_Angeles',
+        'America/Denver',
+        'America/Chicago',
+        'America/New_York',
+        'America/Phoenix',
+        'America/Anchorage',
+        'Pacific/Honolulu',
+      ];
+      preferredZones.forEach((zone) => {
+        const info = buildTimeZoneInfo(zone);
+        if (!offsets.has(info.offsetMinutes)) {
+          offsets.set(info.offsetMinutes, info);
+        }
+      });
       zones.forEach((zone) => {
         const info = buildTimeZoneInfo(zone);
         if (!offsets.has(info.offsetMinutes)) {
@@ -2222,13 +2649,12 @@
         }
       });
       const defaultInfo = buildTimeZoneInfo(DEFAULT_TIME_ZONE);
-      offsets.set(defaultInfo.offsetMinutes, defaultInfo); // ensure default uses its zone
-
+      offsets.set(defaultInfo.offsetMinutes, defaultInfo);
       const entries = [...offsets.values()].sort((a, b) => a.offsetMinutes - b.offsetMinutes);
-      timezoneSelect.innerHTML = entries
+      modalTzSelect.innerHTML = entries
         .map((entry) => `<option value="${entry.zone}">${entry.label}</option>`)
         .join('');
-      timezoneSelect.value = DEFAULT_TIME_ZONE;
+      modalTzSelect.value = DEFAULT_TIME_ZONE;
     }
 
     function readAllTimeZones() {
@@ -2285,16 +2711,17 @@
       }
     }
 
-    function setTimeZoneValue(value) {
+    function setModalTimeZoneValue(value) {
+      if (!modalTzSelect) return;
       const target = value || DEFAULT_TIME_ZONE;
-      if (![...timezoneSelect.options].some((opt) => opt.value === target)) {
+      if (![...modalTzSelect.options].some((opt) => opt.value === target)) {
         const info = buildTimeZoneInfo(target);
         const opt = document.createElement('option');
         opt.value = target;
         opt.textContent = info.label;
-        timezoneSelect.appendChild(opt);
+        modalTzSelect.appendChild(opt);
       }
-      timezoneSelect.value = target;
+      modalTzSelect.value = target;
     }
 
     function computeOffsetsForRange(startValue, endValue, timeZone) {
@@ -2339,6 +2766,25 @@
         return '-';
       }
       return dt.toLocaleString();
+    }
+
+    function formatDateOnly(value) {
+      if (!value) return '-';
+      const dt = new Date(value);
+      if (Number.isNaN(dt.getTime())) {
+        return '-';
+      }
+      return dt.toLocaleDateString();
+    }
+
+    function formatDateInputValue(value) {
+      if (!value) return '';
+      const dt = new Date(value);
+      if (Number.isNaN(dt.getTime())) return '';
+      const year = dt.getFullYear();
+      const month = String(dt.getMonth() + 1).padStart(2, '0');
+      const day = String(dt.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
 
     function formatLocationDateTime(row, timeZone) {

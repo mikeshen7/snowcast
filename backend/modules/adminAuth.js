@@ -13,13 +13,11 @@ const COOKIE_NAME = 'adminSession';
 const SESSION_SECRET = config.backend.sessionSecret;
 const BACKEND_URL = config.backend.url;
 const COOKIE_SECURE = config.backend.cookieSecure;
-const BOOTSTRAP_EMAIL = config.backend.ownerEmail;
-const OWNER_ROLE = 'owner';
+const BOOTSTRAP_EMAIL = config.backend.adminEmail;
 const ADMIN_ROLE = 'admin';
-const LEVEL1_ROLE = 'level1';
-const LEVEL2_ROLE = 'level2';
-const LEVEL3_ROLE = 'level3';
-const ALLOWED_ROLES = new Set([OWNER_ROLE, ADMIN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE]);
+const FREE_ROLE = 'free';
+const PREMIUM_ROLE = 'premium';
+const ALLOWED_ROLES = new Set([ADMIN_ROLE, FREE_ROLE, PREMIUM_ROLE]);
 
 function getSessionTtlMinutes() {
   return Number(appConfig.values().TTL_BACKEND_SESSION_MINUTES) || 60;
@@ -51,7 +49,7 @@ function buildMagicLink(token, redirectPath) {
 
 async function sendMagicLinkEmail(email, link) {
   const expiresMinutes = getMagicTtlMinutes();
-  const subject = 'Weather Forecast backend admin login link';
+  const subject = 'Snowcast Admin Console login link';
   const text = [
     'Your admin login link:',
     link,
@@ -99,25 +97,25 @@ async function handleRequestMagicLink(request, response) {
   if (!user && BOOTSTRAP_EMAIL && email === BOOTSTRAP_EMAIL) {
     user = await adminUserDb.create({
       email,
+      name: 'Owner',
       status: 'active',
-      roles: [OWNER_ROLE],
-      locationAccess: 'all',
-      adminAccess: true,
+      roles: [ADMIN_ROLE],
     });
     console.log('Bootstrap admin user created for', email);
   }
   if (user && BOOTSTRAP_EMAIL && email === BOOTSTRAP_EMAIL) {
-    user.roles = [OWNER_ROLE];
+    user.roles = [ADMIN_ROLE];
     user.status = 'active';
-    user.locationAccess = 'all';
-    user.adminAccess = true;
+    if (!user.name) {
+      user.name = 'Owner';
+    }
     await user.save();
   }
   if (!user) {
     // Avoid email enumeration; respond success even if user not found.
     return response.status(200).send({ ok: true });
   }
-  if (!user.adminAccess && !(user.roles || []).includes(OWNER_ROLE)) {
+  if (!(user.roles || []).includes(ADMIN_ROLE)) {
     return response.status(200).send({ ok: true });
   }
 
@@ -229,14 +227,12 @@ async function handleSessionStatus(request, response) {
     response.clearCookie(COOKIE_NAME);
     return response.status(403).send({ authenticated: false });
   }
-  const isOwner = (adminUser.roles || []).includes(OWNER_ROLE);
+  const isAdmin = (adminUser.roles || []).includes(ADMIN_ROLE);
   return response.status(200).send({
     authenticated: true,
     user: {
       email: adminUser.email,
       roles: adminUser.roles || [],
-      locationAccess: adminUser.locationAccess || 'all',
-      adminAccess: isOwner ? true : Boolean(adminUser.adminAccess),
     },
   });
 }
@@ -259,17 +255,15 @@ async function getAdminUserFromRequest(request) {
   if (!user || user.status !== 'active') {
     return null;
   }
-  if (!user.adminAccess && !(user.roles || []).includes(OWNER_ROLE)) {
+  if (!(user.roles || []).includes(ADMIN_ROLE)) {
     return null;
   }
   const normalizedRoles = (user.roles || []).filter((r) => ALLOWED_ROLES.has(r)).slice(0, 1);
-  const isOwner = normalizedRoles.includes(OWNER_ROLE);
+  const isAdmin = normalizedRoles.includes(ADMIN_ROLE);
   return {
     id: String(user._id),
     email: user.email,
     roles: normalizedRoles,
-    locationAccess: isOwner ? 'all' : user.locationAccess || 'all',
-    adminAccess: isOwner ? true : Boolean(user.adminAccess),
   };
 }
 
@@ -281,9 +275,7 @@ module.exports = {
   handleSessionStatus,
   handleLogout,
   getAdminUserFromRequest,
-  OWNER_ROLE,
   ADMIN_ROLE,
-  LEVEL1_ROLE,
-  LEVEL2_ROLE,
-  LEVEL3_ROLE,
+  FREE_ROLE,
+  PREMIUM_ROLE,
 };

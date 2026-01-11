@@ -20,35 +20,7 @@ const defaults = {
   TTL_BACKEND_SESSION_MINUTES: 60,
   TTL_AUTH_TOKEN_MINUTES: 15,
   TTL_FRONTEND_SESSION_MINUTES: 1440,
-  ROLE_LABEL_GUEST: 'Guest',
-  ROLE_LABEL_LEVEL1: 'Starter',
-  ROLE_LABEL_LEVEL2: 'Plus',
-  ROLE_LABEL_LEVEL3: 'Pro',
-  ROLE_LABEL_ADMIN: 'Admin',
-  ROLE_LABEL_OWNER: 'Owner',
-  ROLE_FAVORITES_GUEST: 0,
-  ROLE_FAVORITES_LEVEL1: 1,
-  ROLE_FAVORITES_LEVEL2: 3,
-  ROLE_FAVORITES_LEVEL3: -1,
-  ROLE_FAVORITES_ADMIN: -1,
-  ROLE_FAVORITES_OWNER: -1,
-  ROLE_HOURLY_GUEST: 0,
-  ROLE_HOURLY_LEVEL1: 0,
-  ROLE_HOURLY_LEVEL2: 1,
-  ROLE_HOURLY_LEVEL3: 1,
-  ROLE_HOURLY_ADMIN: 1,
-  ROLE_HOURLY_OWNER: 1,
-  ROLE_POW_ALERTS_LEVEL1: 1,
-  ROLE_POW_ALERTS_LEVEL2: 3,
-  ROLE_POW_ALERTS_LEVEL3: 10,
-  ROLE_POW_ALERTS_ADMIN: -1,
-  ROLE_POW_ALERTS_OWNER: -1,
-  ROLE_CHECK_POW_LEVEL1: 0,
-  ROLE_CHECK_POW_LEVEL2: 0,
-  ROLE_CHECK_POW_LEVEL3: 1,
-  ROLE_CHECK_POW_ADMIN: 1,
-  ROLE_CHECK_POW_OWNER: 1,
-  ROLE_CHECK_POW_GUEST: 0,
+  
 };
 
 const DEFAULT_CONFIG = {
@@ -116,128 +88,14 @@ const DEFAULT_CONFIG = {
     value: defaults.TTL_AUTH_TOKEN_MINUTES,
     description: 'Magic-link token lifetime in minutes.'
   },
-  ROLE_LABEL_GUEST: {
-    value: defaults.ROLE_LABEL_GUEST,
-    description: 'Display label for the guest role.'
-  },
-  ROLE_LABEL_LEVEL1: {
-    value: defaults.ROLE_LABEL_LEVEL1,
-    description: 'Display label for level1 users.'
-  },
-  ROLE_LABEL_LEVEL2: {
-    value: defaults.ROLE_LABEL_LEVEL2,
-    description: 'Display label for level2 users.'
-  },
-  ROLE_LABEL_LEVEL3: {
-    value: defaults.ROLE_LABEL_LEVEL3,
-    description: 'Display label for level3 users.'
-  },
-  ROLE_LABEL_ADMIN: {
-    value: defaults.ROLE_LABEL_ADMIN,
-    description: 'Display label for admin users.'
-  },
-  ROLE_LABEL_OWNER: {
-    value: defaults.ROLE_LABEL_OWNER,
-    description: 'Display label for owner users.'
-  },
-  ROLE_FAVORITES_GUEST: {
-    value: defaults.ROLE_FAVORITES_GUEST,
-    description: 'Favorite resort limit for guest users (use -1 for unlimited).'
-  },
-  ROLE_FAVORITES_LEVEL1: {
-    value: defaults.ROLE_FAVORITES_LEVEL1,
-    description: 'Favorite resort limit for level1 users (use -1 for unlimited).'
-  },
-  ROLE_FAVORITES_LEVEL2: {
-    value: defaults.ROLE_FAVORITES_LEVEL2,
-    description: 'Favorite resort limit for level2 users (use -1 for unlimited).'
-  },
-  ROLE_FAVORITES_LEVEL3: {
-    value: defaults.ROLE_FAVORITES_LEVEL3,
-    description: 'Favorite resort limit for level3 users (use -1 for unlimited).'
-  },
-  ROLE_FAVORITES_ADMIN: {
-    value: defaults.ROLE_FAVORITES_ADMIN,
-    description: 'Favorite resort limit for admin users (use -1 for unlimited).'
-  },
-  ROLE_FAVORITES_OWNER: {
-    value: defaults.ROLE_FAVORITES_OWNER,
-    description: 'Favorite resort limit for owner users (use -1 for unlimited).'
-  },
-  ROLE_HOURLY_GUEST: {
-    value: defaults.ROLE_HOURLY_GUEST,
-    description: 'Allow hourly modal access for guest users (1 = on, 0 = off).'
-  },
-  ROLE_HOURLY_LEVEL1: {
-    value: defaults.ROLE_HOURLY_LEVEL1,
-    description: 'Allow hourly modal access for level1 users (1 = on, 0 = off).'
-  },
-  ROLE_HOURLY_LEVEL2: {
-    value: defaults.ROLE_HOURLY_LEVEL2,
-    description: 'Allow hourly modal access for level2 users (1 = on, 0 = off).'
-  },
-  ROLE_HOURLY_LEVEL3: {
-    value: defaults.ROLE_HOURLY_LEVEL3,
-    description: 'Allow hourly modal access for level3 users (1 = on, 0 = off).'
-  },
-  ROLE_HOURLY_ADMIN: {
-    value: defaults.ROLE_HOURLY_ADMIN,
-    description: 'Allow hourly modal access for admin users (1 = on, 0 = off).'
-  },
-  ROLE_HOURLY_OWNER: {
-    value: defaults.ROLE_HOURLY_OWNER,
-    description: 'Allow hourly modal access for owner users (1 = on, 0 = off).'
-  },
-  ROLE_POW_ALERTS_LEVEL1: {
-    value: defaults.ROLE_POW_ALERTS_LEVEL1,
-    description: 'Pow alert limit for level1 users (use -1 for unlimited).'
-  },
-  ROLE_POW_ALERTS_LEVEL2: {
-    value: defaults.ROLE_POW_ALERTS_LEVEL2,
-    description: 'Pow alert limit for level2 users (use -1 for unlimited).'
-  },
-  ROLE_POW_ALERTS_LEVEL3: {
-    value: defaults.ROLE_POW_ALERTS_LEVEL3,
-    description: 'Pow alert limit for level3 users (use -1 for unlimited).'
-  },
-  ROLE_POW_ALERTS_ADMIN: {
-    value: defaults.ROLE_POW_ALERTS_ADMIN,
-    description: 'Pow alert limit for admin users (use -1 for unlimited).'
-  },
-  ROLE_POW_ALERTS_OWNER: {
-    value: defaults.ROLE_POW_ALERTS_OWNER,
-    description: 'Pow alert limit for owner users (use -1 for unlimited).'
-  },
-  ROLE_CHECK_POW_LEVEL1: {
-    value: defaults.ROLE_CHECK_POW_LEVEL1,
-    description: 'Allow Check Pow Now for level1 users (1 = on, 0 = off).'
-  },
-  ROLE_CHECK_POW_LEVEL2: {
-    value: defaults.ROLE_CHECK_POW_LEVEL2,
-    description: 'Allow Check Pow Now for level2 users (1 = on, 0 = off).'
-  },
-  ROLE_CHECK_POW_LEVEL3: {
-    value: defaults.ROLE_CHECK_POW_LEVEL3,
-    description: 'Allow Check Pow Now for level3 users (1 = on, 0 = off).'
-  },
-  ROLE_CHECK_POW_ADMIN: {
-    value: defaults.ROLE_CHECK_POW_ADMIN,
-    description: 'Allow Check Pow Now for admin users (1 = on, 0 = off).'
-  },
-  ROLE_CHECK_POW_OWNER: {
-    value: defaults.ROLE_CHECK_POW_OWNER,
-    description: 'Allow Check Pow Now for owner users (1 = on, 0 = off).'
-  },
-  ROLE_CHECK_POW_GUEST: {
-    value: defaults.ROLE_CHECK_POW_GUEST,
-    description: 'Allow Check Pow Now for guest users (1 = on, 0 = off).'
-  },
+  
 };
 
 const cache = new Map();
 let values = buildValuesFromCache();
 
 async function ensureWeatherConfigDefaults() {
+  await appConfigDb.deleteMany({ key: { $regex: '^ROLE_' } });
   for (const [key, meta] of Object.entries(DEFAULT_CONFIG)) {
     await appConfigDb.updateOne(
       { key },
@@ -313,35 +171,6 @@ function buildValuesFromCache() {
     TTL_BACKEND_SESSION_MINUTES: readValue('TTL_BACKEND_SESSION_MINUTES', defaults.TTL_BACKEND_SESSION_MINUTES),
     TTL_FRONTEND_SESSION_MINUTES: readValue('TTL_FRONTEND_SESSION_MINUTES', defaults.TTL_FRONTEND_SESSION_MINUTES),
     TTL_AUTH_TOKEN_MINUTES: readValue('TTL_AUTH_TOKEN_MINUTES', defaults.TTL_AUTH_TOKEN_MINUTES),
-    ROLE_LABEL_GUEST: readValue('ROLE_LABEL_GUEST', defaults.ROLE_LABEL_GUEST),
-    ROLE_LABEL_LEVEL1: readValue('ROLE_LABEL_LEVEL1', defaults.ROLE_LABEL_LEVEL1),
-    ROLE_LABEL_LEVEL2: readValue('ROLE_LABEL_LEVEL2', defaults.ROLE_LABEL_LEVEL2),
-    ROLE_LABEL_LEVEL3: readValue('ROLE_LABEL_LEVEL3', defaults.ROLE_LABEL_LEVEL3),
-    ROLE_LABEL_ADMIN: readValue('ROLE_LABEL_ADMIN', defaults.ROLE_LABEL_ADMIN),
-    ROLE_LABEL_OWNER: readValue('ROLE_LABEL_OWNER', defaults.ROLE_LABEL_OWNER),
-    ROLE_FAVORITES_GUEST: readValue('ROLE_FAVORITES_GUEST', defaults.ROLE_FAVORITES_GUEST),
-    ROLE_FAVORITES_LEVEL1: readValue('ROLE_FAVORITES_LEVEL1', defaults.ROLE_FAVORITES_LEVEL1),
-    ROLE_FAVORITES_LEVEL2: readValue('ROLE_FAVORITES_LEVEL2', defaults.ROLE_FAVORITES_LEVEL2),
-    ROLE_FAVORITES_LEVEL3: readValue('ROLE_FAVORITES_LEVEL3', defaults.ROLE_FAVORITES_LEVEL3),
-    ROLE_FAVORITES_ADMIN: readValue('ROLE_FAVORITES_ADMIN', defaults.ROLE_FAVORITES_ADMIN),
-    ROLE_FAVORITES_OWNER: readValue('ROLE_FAVORITES_OWNER', defaults.ROLE_FAVORITES_OWNER),
-    ROLE_HOURLY_GUEST: readValue('ROLE_HOURLY_GUEST', defaults.ROLE_HOURLY_GUEST),
-    ROLE_HOURLY_LEVEL1: readValue('ROLE_HOURLY_LEVEL1', defaults.ROLE_HOURLY_LEVEL1),
-    ROLE_HOURLY_LEVEL2: readValue('ROLE_HOURLY_LEVEL2', defaults.ROLE_HOURLY_LEVEL2),
-    ROLE_HOURLY_LEVEL3: readValue('ROLE_HOURLY_LEVEL3', defaults.ROLE_HOURLY_LEVEL3),
-    ROLE_HOURLY_ADMIN: readValue('ROLE_HOURLY_ADMIN', defaults.ROLE_HOURLY_ADMIN),
-    ROLE_HOURLY_OWNER: readValue('ROLE_HOURLY_OWNER', defaults.ROLE_HOURLY_OWNER),
-    ROLE_POW_ALERTS_LEVEL1: readValue('ROLE_POW_ALERTS_LEVEL1', defaults.ROLE_POW_ALERTS_LEVEL1),
-    ROLE_POW_ALERTS_LEVEL2: readValue('ROLE_POW_ALERTS_LEVEL2', defaults.ROLE_POW_ALERTS_LEVEL2),
-    ROLE_POW_ALERTS_LEVEL3: readValue('ROLE_POW_ALERTS_LEVEL3', defaults.ROLE_POW_ALERTS_LEVEL3),
-    ROLE_POW_ALERTS_ADMIN: readValue('ROLE_POW_ALERTS_ADMIN', defaults.ROLE_POW_ALERTS_ADMIN),
-    ROLE_POW_ALERTS_OWNER: readValue('ROLE_POW_ALERTS_OWNER', defaults.ROLE_POW_ALERTS_OWNER),
-    ROLE_CHECK_POW_LEVEL1: readValue('ROLE_CHECK_POW_LEVEL1', defaults.ROLE_CHECK_POW_LEVEL1),
-    ROLE_CHECK_POW_LEVEL2: readValue('ROLE_CHECK_POW_LEVEL2', defaults.ROLE_CHECK_POW_LEVEL2),
-    ROLE_CHECK_POW_LEVEL3: readValue('ROLE_CHECK_POW_LEVEL3', defaults.ROLE_CHECK_POW_LEVEL3),
-    ROLE_CHECK_POW_ADMIN: readValue('ROLE_CHECK_POW_ADMIN', defaults.ROLE_CHECK_POW_ADMIN),
-    ROLE_CHECK_POW_OWNER: readValue('ROLE_CHECK_POW_OWNER', defaults.ROLE_CHECK_POW_OWNER),
-    ROLE_CHECK_POW_GUEST: readValue('ROLE_CHECK_POW_GUEST', defaults.ROLE_CHECK_POW_GUEST),
   };
 }
 

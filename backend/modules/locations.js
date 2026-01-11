@@ -3,10 +3,15 @@
 const locationsDb = require('../models/locationsDb');
 const { lookupCountryRegion } = require('./geoLookup');
 const appConfig = require('./appConfig');
+const weatherApi = require('./weatherApi');
 
 const locationCache = {
   locations: [],
 };
+
+function formatDate(date) {
+  return date.toISOString().split('T')[0];
+}
 
 function parseBoolean(value) {
   if (value === undefined) return undefined;
@@ -98,6 +103,8 @@ async function endpointCreateLocation(request, response, next) {
       name: doc.name,
     }));
 
+    triggerLocationBackfill(doc);
+
     return response.status(201).send({
       id: doc._id,
       name: doc.name,
@@ -122,10 +129,34 @@ async function endpointCreateLocation(request, response, next) {
   }
 }
 
+function triggerLocationBackfill(location) {
+  const config = appConfig.values();
+  const endDate = formatDate(new Date());
+  const startDate = formatDate(new Date(Date.now() - config.DB_BACKFILL_DAYS * config.MS_PER_DAY));
+  setImmediate(async () => {
+    try {
+      await weatherApi.fetchLocation(location, { startDate, endDate, context: 'backfill' });
+      console.log(JSON.stringify({
+        event: 'location_backfill_complete',
+        locationId: String(location._id),
+        startDate,
+        endDate,
+      }));
+    } catch (err) {
+      console.log(JSON.stringify({
+        event: 'location_backfill_error',
+        locationId: String(location._id),
+        error: err.message,
+      }));
+    }
+  });
+}
+
 async function endpointSearchLocations(request, response, next) {
   try {
     const { q = '', isSkiResort } = request.query;
-    const limit = Math.min(parseInt(request.query.limit, 10) || 20, 50);
+    const limit = Math.min(parseInt(request.query.limit, 10) || 20, 200);
+    const page = Math.max(parseInt(request.query.page, 10) || 0, 0);
     const filter = {};
 
     if (q) {
@@ -137,7 +168,13 @@ async function endpointSearchLocations(request, response, next) {
       filter.isSkiResort = parsedFlag;
     }
 
-    const docs = await locationsDb.find(filter).sort({ name: 1 }).limit(limit).lean();
+    const query = locationsDb.find(filter).sort({ name: 1 });
+    if (page > 0) {
+      query.skip((page - 1) * limit).limit(limit);
+    } else {
+      query.limit(limit);
+    }
+    const docs = await query.lean();
     const results = docs.map((doc) => ({
       id: doc._id,
       name: doc.name,
@@ -149,6 +186,10 @@ async function endpointSearchLocations(request, response, next) {
       isSkiResort: doc.isSkiResort,
     }));
 
+    if (page > 0) {
+      const total = await locationsDb.countDocuments(filter);
+      return response.status(200).send({ results, total, page, limit });
+    }
     return response.status(200).send(results);
   } catch (error) {
     console.error('*** locations endpointSearchLocations error:', error.message);
@@ -332,8 +373,29 @@ async function endpointLookupLocationMetadata(request, response, next) {
   }
 }
 
+async function endpointListBackfillLocations(request, response, next) {
+  try {
+    const docs = await locationsDb.find({}).sort({ name: 1 }).lean();
+    const results = docs.map((doc) => ({
+      id: doc._id,
+      name: doc.name,
+      country: doc.country,
+      region: doc.region,
+      lat: doc.lat,
+      lon: doc.lon,
+      tz_iana: doc.tz_iana,
+      isSkiResort: doc.isSkiResort,
+    }));
+    return response.status(200).send(results);
+  } catch (error) {
+    console.error('*** locations endpointListResortLocations error:', error.message);
+    next(error);
+  }
+}
+
 module.exports = {
   endpointSearchLocations,
+  endpointListBackfillLocations,
   endpointNearestLocation,
   endpointCreateLocation,
   endpointDeleteLocation,

@@ -6,7 +6,15 @@ const adminUserDb = require('../models/adminUserDb');
 const frontendMagicTokenDb = require('../models/frontendMagicTokenDb');
 const { sendEmail } = require('./email');
 const appConfig = require('./appConfig');
-const { getRoleLabels, getFavoriteLimits, getHourlyAccess, getPowAlertLimits, getCheckPowAccess, normalizeRole } = require('./roleConfig');
+const {
+  getRoleLabels,
+  getFavoriteLimits,
+  getHourlyAccess,
+  getPowAlertLimits,
+  getCheckPowAccess,
+  getForecastWindows,
+  normalizeRole,
+} = require('./roleConfig');
 
 const COOKIE_NAME = 'frontendSession';
 const { config } = require('../config');
@@ -106,6 +114,8 @@ async function handleRequestMagicLink(request, response) {
     return response.status(400).send('email is required');
   }
 
+  const defaultName = email.split('@')[0] || email;
+
   let user = await adminUserDb.findOne({ email, status: 'active' });
   if (!user && !ALLOW_NEW_USERS) {
     try {
@@ -118,10 +128,9 @@ async function handleRequestMagicLink(request, response) {
   if (!user && ALLOW_NEW_USERS) {
     user = await adminUserDb.create({
       email,
+      name: defaultName,
       status: 'active',
-      roles: ['level1'],
-      locationAccess: 'all',
-      adminAccess: false,
+      roles: ['free'],
     });
   }
   if (!user) {
@@ -196,24 +205,34 @@ async function handleVerifyMagicLink(request, response) {
 
 async function handleSessionStatus(request, response) {
   const user = await getFrontendUserFromRequest(request);
-  if (!user) {
-    response.clearCookie(COOKIE_NAME);
-    return response.status(403).send({ authenticated: false });
-  }
   const roleLabels = getRoleLabels();
   const roleLimits = getFavoriteLimits();
   const roleHourly = getHourlyAccess();
   const rolePowAlerts = getPowAlertLimits();
   const roleCheckPow = getCheckPowAccess();
+  const roleForecast = getForecastWindows();
+  if (!user) {
+    response.clearCookie(COOKIE_NAME);
+    return response.status(200).send({
+      authenticated: false,
+      roleLabels,
+      roleLimits,
+      roleHourly,
+      rolePowAlerts,
+      roleCheckPow,
+      roleForecast,
+    });
+  }
   const normalizedRoles = (user.roles || []).map((role) => normalizeRole(role));
   return response.status(200).send({
     authenticated: true,
-    user: { email: user.email, roles: normalizedRoles, locationAccess: user.locationAccess || 'all' },
+    user: { email: user.email, roles: normalizedRoles },
     roleLabels,
     roleLimits,
     roleHourly,
     rolePowAlerts,
     roleCheckPow,
+    roleForecast,
   });
 }
 
@@ -232,12 +251,26 @@ async function getFrontendUserFromRequest(request) {
   if (!user || user.status !== 'active') {
     return null;
   }
+  const effectiveRole = resolveUserRole(user);
   return {
     id: String(user._id),
     email: user.email,
-    roles: user.roles || [],
-    locationAccess: user.locationAccess || 'all',
+    roles: [effectiveRole],
   };
+}
+
+function resolveUserRole(user) {
+  const rawRole = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free');
+  if (rawRole === 'admin') {
+    return 'admin';
+  }
+  if (rawRole === 'premium') {
+    if (user.subscriptionExpiresAt && user.subscriptionExpiresAt > new Date()) {
+      return 'premium';
+    }
+    return 'free';
+  }
+  return rawRole === 'free' ? 'free' : 'free';
 }
 
 module.exports = {

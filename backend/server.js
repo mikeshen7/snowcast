@@ -14,6 +14,7 @@ const locations = require('./modules/locations');
 const weatherHourly = require('./modules/weatherHourly');
 const weatherDaily = require('./modules/weatherDaily');
 const appConfig = require('./modules/appConfig');
+const roleConfig = require('./modules/roleConfig');
 const adminConfig = require('./modules/adminConfig');
 const frontendAuth = require('./modules/frontendAuth');
 const frontendPreferences = require('./modules/frontendPreferences');
@@ -30,6 +31,7 @@ const { requireClientApiKey } = require('./modules/clientAuth');
 const { trackUsage } = require('./modules/usageTracker');
 const adminApiClients = require('./modules/adminApiClients');
 const adminUsers = require('./modules/adminUsers');
+const adminRoles = require('./modules/adminRoles');
 const { createFixedWindowRateLimiter } = require('./modules/rateLimit');
 const ADMIN_ENABLED = config.backend.adminEnabled;
 
@@ -125,6 +127,20 @@ if (ADMIN_ENABLED) {
   app.post('/admin/discount-codes', requireAdminSession, (req, res, next) => discountCodes.createCode(req, res, next));
   app.put('/admin/discount-codes/:id', requireAdminSession, (req, res, next) => discountCodes.updateCode(req, res, next));
   app.delete('/admin/discount-codes/:id', requireAdminSession, (req, res, next) => discountCodes.deleteCode(req, res, next));
+  app.get('/admin/roles', requireAdminSession, (req, res, next) => adminRoles.listRoles(req, res, next));
+  app.put('/admin/roles/:code', requireAdminSession, (req, res, next) => adminRoles.updateRole(req, res, next));
+  app.get('/admin/locations/backfill', requireAdminSession, (req, res, next) => locations.endpointListBackfillLocations(req, res, next));
+  app.post('/admin/backfill', requireAdminSession, async (req, res) => {
+    try {
+      const { locationIds } = req.body || {};
+      const result = await appMaintenance.backfillLocations({
+        locationIds: Array.isArray(locationIds) ? locationIds : [],
+      });
+      return res.status(200).send({ ok: true, ...result });
+    } catch (error) {
+      return res.status(400).send({ error: error.message || 'Backfill failed' });
+    }
+  });
   app.get('/admin/api-clients', requireAdminSession, (req, res, next) => adminApiClients.endpointListClients(req, res, next));
   app.post('/admin/api-clients', requireAdminSession, (req, res, next) => adminApiClients.endpointCreateClient(req, res, next));
   app.put('/admin/api-clients/:id', requireAdminSession, (req, res, next) => adminApiClients.endpointUpdateClient(req, res, next));
@@ -167,6 +183,8 @@ app.use((error, request, response, next) => {
 // *** Main
 async function start() {
   await appConfig.ensureWeatherConfigDefaults();
+  await roleConfig.ensureRoleDefaults();
+  await roleConfig.refreshRoleCache();
   await locations.startLocationMaintenance();
   setTimeout(() => {
     appMaintenance.startMaintenance();

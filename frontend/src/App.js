@@ -33,49 +33,62 @@ import {
   toISODate,
 } from './utils/date';
 
-const ROLE_WINDOWS = {
-  guest: { back: 0, forward: 1 },
-  level1: { back: 3, forward: 3 },
-  level2: { back: 7, forward: 7 },
-  level3: null,
+const DEFAULT_ROLE_WINDOWS = {
+  guest: { back: 2, forward: 7 },
+  free: { back: 2, forward: 7 },
+  premium: null,
   admin: null,
-  owner: null,
 };
 
 const DEFAULT_ROLE_LABELS = {
   guest: 'Guest',
-  level1: 'Starter',
-  level2: 'Plus',
-  level3: 'Pro',
+  free: 'Free',
+  premium: 'Premium',
   admin: 'Admin',
-  owner: 'Owner',
 };
 
 const DEFAULT_ROLE_LIMITS = {
-  guest: 0,
-  level1: 1,
-  level2: 3,
-  level3: -1,
+  guest: 3,
+  free: 3,
+  premium: -1,
   admin: -1,
-  owner: -1,
 };
 
 const UNIT_STORAGE_KEY = 'snowcast-units';
 const FAVORITES_KEY = 'snowcast-favorites';
 const HOME_RESORT_KEY = 'snowcast-home-resort';
 const WIND_MPH_PER_KMH = 0.621371;
+const WINDY_THRESHOLD_MPH = 15;
 const CM_PER_INCH = 2.54;
 
 function normalizeRole(role) {
-  if (role === 'basic') return 'level1';
-  if (role === 'standard') return 'level2';
-  if (role === 'advanced') return 'level3';
+  if (role === 'basic' || role === 'level1') return 'free';
+  if (role === 'standard' || role === 'level2' || role === 'advanced' || role === 'level3') return 'premium';
+  if (role === 'owner') return 'admin';
   return role;
+}
+
+function normalizeForecastWindows(map) {
+  const next = {};
+  if (!map || typeof map !== 'object') return next;
+  Object.entries(map).forEach(([roleKey, value]) => {
+    if (!value || typeof value !== 'object') {
+      next[roleKey] = null;
+      return;
+    }
+    const back = Number(value.back);
+    const forward = Number(value.forward);
+    if (!Number.isFinite(back) || !Number.isFinite(forward)) {
+      return;
+    }
+    next[roleKey] = back < 0 || forward < 0 ? null : { back, forward };
+  });
+  return next;
 }
 
 function resolveRole(user) {
   if (!user) return 'guest';
-  const role = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'level1';
+  const role = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free';
   return normalizeRole(role);
 }
 
@@ -210,19 +223,21 @@ function App() {
   const preferencesLoadedRef = useRef(false);
   const firstLoginHandledRef = useRef(false);
   const [user, setUser] = useState(null);
-  const [authMessage, setAuthMessage] = useState('');
   const [email, setEmail] = useState('');
   const [showLogin, setShowLogin] = useState(false);
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState(() => window.localStorage.getItem('snowcast-resort') || '');
   const [favorites, setFavorites] = useState(() => loadFavorites());
   const [homeResortId, setHomeResortId] = useState(() => window.localStorage.getItem(HOME_RESORT_KEY) || '');
+  const [profileName, setProfileName] = useState('');
+  const [profileNameDraft, setProfileNameDraft] = useState('');
   const [powAlerts, setPowAlerts] = useState([]);
   const [powAlertsStatus, setPowAlertsStatus] = useState('');
   const [powAlertsLoading, setPowAlertsLoading] = useState(false);
   const [powAlertCheckResult, setPowAlertCheckResult] = useState('');
   const [roleLabels, setRoleLabels] = useState(DEFAULT_ROLE_LABELS);
   const [roleLimits, setRoleLimits] = useState(DEFAULT_ROLE_LIMITS);
+  const [roleForecast, setRoleForecast] = useState(DEFAULT_ROLE_WINDOWS);
   const [roleHourly, setRoleHourly] = useState({});
   const [rolePowAlerts, setRolePowAlerts] = useState({});
   const [roleCheckPow, setRoleCheckPow] = useState({});
@@ -306,6 +321,9 @@ function App() {
           if (data.roleLimits && typeof data.roleLimits === 'object') {
             setRoleLimits((prev) => ({ ...prev, ...data.roleLimits }));
           }
+          if (data.roleForecast && typeof data.roleForecast === 'object') {
+            setRoleForecast((prev) => ({ ...prev, ...normalizeForecastWindows(data.roleForecast) }));
+          }
           if (data.roleHourly && typeof data.roleHourly === 'object') {
             setRoleHourly((prev) => ({ ...prev, ...data.roleHourly }));
           }
@@ -318,11 +336,47 @@ function App() {
           setAuthStatus('authenticated');
         } else {
           setUser(null);
+          if (data?.roleLabels && typeof data.roleLabels === 'object') {
+            setRoleLabels((prev) => ({ ...prev, ...data.roleLabels }));
+          } else {
+            setRoleLabels(DEFAULT_ROLE_LABELS);
+          }
+          if (data?.roleLimits && typeof data.roleLimits === 'object') {
+            setRoleLimits((prev) => ({ ...prev, ...data.roleLimits }));
+          } else {
+            setRoleLimits(DEFAULT_ROLE_LIMITS);
+          }
+          if (data?.roleForecast && typeof data.roleForecast === 'object') {
+            setRoleForecast((prev) => ({ ...prev, ...normalizeForecastWindows(data.roleForecast) }));
+          } else {
+            setRoleForecast(DEFAULT_ROLE_WINDOWS);
+          }
+          if (data?.roleHourly && typeof data.roleHourly === 'object') {
+            setRoleHourly((prev) => ({ ...prev, ...data.roleHourly }));
+          } else {
+            setRoleHourly({});
+          }
+          if (data?.rolePowAlerts && typeof data.rolePowAlerts === 'object') {
+            setRolePowAlerts((prev) => ({ ...prev, ...data.rolePowAlerts }));
+          } else {
+            setRolePowAlerts({});
+          }
+          if (data?.roleCheckPow && typeof data.roleCheckPow === 'object') {
+            setRoleCheckPow((prev) => ({ ...prev, ...data.roleCheckPow }));
+          } else {
+            setRoleCheckPow({});
+          }
           setAuthStatus('anonymous');
         }
       } catch (error) {
         if (!isMounted) return;
         setUser(null);
+        setRoleLabels(DEFAULT_ROLE_LABELS);
+        setRoleLimits(DEFAULT_ROLE_LIMITS);
+        setRoleForecast(DEFAULT_ROLE_WINDOWS);
+        setRoleHourly({});
+        setRolePowAlerts({});
+        setRoleCheckPow({});
         setAuthStatus('anonymous');
       }
     };
@@ -367,6 +421,12 @@ function App() {
   useEffect(() => {
     if (authStatus !== 'authenticated') {
       preferencesLoadedRef.current = false;
+      if (authStatus === 'anonymous') {
+        setFavorites([]);
+        setProfileName('');
+        setProfileNameDraft('');
+        window.localStorage.removeItem(FAVORITES_KEY);
+      }
       return;
     }
     let isMounted = true;
@@ -376,6 +436,9 @@ function App() {
         const nextFavorites = Array.isArray(prefs?.favorites) ? prefs.favorites.map(String) : [];
         const nextHomeResortId = prefs?.homeResortId ? String(prefs.homeResortId) : '';
         const nextUnits = prefs?.units === 'metric' || prefs?.units === 'imperial' ? prefs.units : '';
+        const nextName = prefs?.name ? String(prefs.name) : '';
+        setProfileName(nextName);
+        setProfileNameDraft(nextName);
         setFavorites(nextFavorites);
         setHomeResortId(nextHomeResortId);
         setUnits(nextUnits || 'imperial');
@@ -448,8 +511,13 @@ function App() {
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
     if (!preferencesLoadedRef.current) return;
-    updateUserPreferences({ favorites, homeResortId, units }).catch(() => {});
-  }, [authStatus, favorites, homeResortId, units]);
+    updateUserPreferences({
+      favorites,
+      homeResortId,
+      units,
+      name: profileName || undefined,
+    }).catch(() => {});
+  }, [authStatus, favorites, homeResortId, units, profileName]);
 
   useEffect(() => {
     if (!selectedLocationId) return;
@@ -540,14 +608,13 @@ function App() {
 
   const handleRequestLink = async (event) => {
     event.preventDefault();
-    setAuthMessage('');
     try {
       const redirectPath = `${window.location.pathname}${window.location.search}`;
       await requestMagicLink(email, redirectPath, 'cookie');
-      setAuthMessage('Check your email for a sign-in link.');
+      showToast('Email sent. Check your inbox for the sign-in link.', 'success', 5000);
       setEmail('');
     } catch (error) {
-      setAuthMessage(error.message || 'Unable to send login link.');
+      showToast(error.message || 'Unable to send login link.', 'error', 6000);
     }
   };
 
@@ -575,7 +642,6 @@ function App() {
     <button
       type="button"
       onClick={() => {
-        setAuthMessage('');
         setMobileMenuOpen(false);
         setShowLogin(true);
       }}
@@ -589,7 +655,6 @@ function App() {
     ? 'hamburger-button'
     : 'hamburger-button desktop-only';
 
-  const roleWindow = ROLE_WINDOWS[role] ?? null;
   const roleLabel = roleLabels[role] || role || '-';
   const isDayVisible = (date) => {
     if (!roleWindow) return true;
@@ -597,6 +662,9 @@ function App() {
     return offset >= -roleWindow.back && offset <= roleWindow.forward;
   };
   const isSignedIn = authStatus === 'authenticated';
+  const roleWindow = isSignedIn
+    ? (roleForecast[role] ?? DEFAULT_ROLE_WINDOWS[role] ?? null)
+    : (roleForecast.guest ?? DEFAULT_ROLE_WINDOWS.guest);
   const isFavoriteSelected = favorites.includes(String(selectedLocationId || ''));
   const favoriteLimit = roleLimits[role] ?? 0;
   const canAddFavorite = favoriteLimit < 0 || favorites.length < favoriteLimit;
@@ -645,6 +713,17 @@ function App() {
   };
 
   const handleFavoriteAttempt = () => {
+    if (!isSignedIn) {
+      showToast('Sign in to save favorites.', 'warning', 6000, {
+        label: 'Sign in',
+        onClick: () => {
+          setShowLogin(true);
+          setToastMessage('');
+          setToastAction(null);
+        },
+      });
+      return;
+    }
     if (!favoriteLimitReached) {
       handleAddFavorite();
       return;
@@ -663,7 +742,29 @@ function App() {
     setHomeResortId(event.target.value);
   };
 
+  const handleNameCommit = () => {
+    const trimmed = profileNameDraft.trim();
+    if (!trimmed) {
+      setProfileNameDraft(profileName);
+      return;
+    }
+    if (trimmed !== profileName) {
+      setProfileName(trimmed);
+    }
+  };
+
   const handleRemoveFavorite = (id) => {
+    if (!isSignedIn) {
+      showToast('Sign in to save favorites.', 'warning', 6000, {
+        label: 'Sign in',
+        onClick: () => {
+          setShowLogin(true);
+          setToastMessage('');
+          setToastAction(null);
+        },
+      });
+      return;
+    }
     setFavorites((prev) => prev.filter((favId) => String(favId) !== String(id)));
   };
 
@@ -760,14 +861,7 @@ function App() {
   const handleCheckPow = async () => {
     try {
       if (!roleCheckPow[role]) {
-        showToast('Upgrade your subscription to run Check Pow Now.', 'warning', 6000, {
-          label: 'Manage',
-          onClick: () => {
-            setActiveView('subscription');
-            setToastMessage('');
-            setToastAction(null);
-          },
-        });
+        showToast('Check Pow Now is available for admins only.', 'warning', 6000);
         return;
       }
       const result = await checkPowAlerts();
@@ -893,14 +987,25 @@ function App() {
 
   const handleDaySelect = async (date, hasAccess) => {
     if (!hasAccess) {
-      showToast('Upgrade your subscription to see more days.', 'warning', 6000, {
-        label: 'Manage',
-        onClick: () => {
-          setActiveView('subscription');
-          setToastMessage('');
-          setToastAction(null);
-        },
-      });
+      if (!isSignedIn) {
+        showToast('Sign in to see more days.', 'warning', 6000, {
+          label: 'Sign in',
+          onClick: () => {
+            setShowLogin(true);
+            setToastMessage('');
+            setToastAction(null);
+          },
+        });
+      } else {
+        showToast('Upgrade your subscription to see more days.', 'warning', 6000, {
+          label: 'Manage',
+          onClick: () => {
+            setActiveView('subscription');
+            setToastMessage('');
+            setToastAction(null);
+          },
+        });
+      }
       return;
     }
     await loadDaySegments(date);
@@ -1269,6 +1374,7 @@ function App() {
                       const key = toISODate(date);
                       const overview = overviewByDate[key];
                       const hasAccess = isDayVisible(date);
+                      const isPast = differenceInDays(date, today) < 0;
                       const hasOverview = Boolean(overview);
                       const isToday = differenceInDays(date, today) === 0;
                       const visibleOverview = hasAccess ? overview : null;
@@ -1276,6 +1382,8 @@ function App() {
                       const snowAmount = Number(visibleOverview?.snowTotal ?? 0);
                       const isPowDay = hasAccess && hasOverview && snowAmount >= 6;
                       const isSnowDay = hasAccess && hasOverview && snowAmount >= 3;
+                      const windyValueMph = Number(visibleOverview?.avgWindspeed ?? 0) * WIND_MPH_PER_KMH;
+                      const isWindy = hasAccess && hasOverview && Number.isFinite(windyValueMph) && windyValueMph >= WINDY_THRESHOLD_MPH;
                       const precipTotal = Number(visibleOverview?.precipTotal ?? 0);
                       const precipType = hasAccess && hasOverview && precipTotal > 0
                         ? (snowAmount > 0
@@ -1292,7 +1400,7 @@ function App() {
                       return (
                         <div
                           key={key}
-                          className={`day-tile ${hasAccess ? 'active' : 'inactive'} ${isToday ? 'today' : ''} ${isSnowDay ? 'snow-day' : ''} ${isPowDay ? 'pow-day' : ''}`}
+                          className={`day-tile ${hasAccess ? 'active' : 'inactive'} ${isPast ? 'past-day' : ''} ${isToday ? 'today' : ''} ${isSnowDay ? 'snow-day' : ''} ${isPowDay ? 'pow-day' : ''}`}
                           role="button"
                           tabIndex={0}
                           onClick={() => handleDaySelect(date, hasAccess)}
@@ -1306,6 +1414,7 @@ function App() {
                           {isPowDay ? <div className="pow-badge desktop-only">POW</div> : null}
                           <div className="day-header">
                             <span className="day-date">{date.getDate()}</span>
+                            {isWindy ? <span className="windy-pill">Windy</span> : null}
                           </div>
                           <div className="day-body">
                             {hasAccess ? (
@@ -1359,6 +1468,23 @@ function App() {
                       <span>{user?.email || '-'}</span>
                     </div>
                     <div className="profile-row">
+                      <span className="profile-label">Name</span>
+                      <input
+                        type="text"
+                        className="profile-input"
+                        value={profileNameDraft}
+                        onChange={(event) => setProfileNameDraft(event.target.value)}
+                        onBlur={handleNameCommit}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            handleNameCommit();
+                          }
+                        }}
+                        placeholder="Your name"
+                      />
+                    </div>
+                    <div className="profile-row">
                       <span className="profile-label">Home resort</span>
                       <select
                         className="profile-select"
@@ -1406,7 +1532,6 @@ function App() {
                         <li>Favorites: {favoriteLimitLabel}</li>
                         <li>Pow alerts: {powAlertLimitLabel}</li>
                         <li>Hourly: {hourlyAccessLabel}</li>
-                        <li>Check Pow Now: {checkPowLabel}</li>
                         <li>Forecast: {forecastWindowLabel}</li>
                       </ul>
                     </div>
@@ -1434,9 +1559,11 @@ function App() {
                     <div className="profile-alerts">
                       <div className="profile-alerts-header">
                         <div />
-                        <button type="button" className="profile-action" onClick={handleCheckPow}>
-                          Check Pow Now
-                        </button>
+                        {roleCheckPow[role] ? (
+                          <button type="button" className="profile-action" onClick={handleCheckPow}>
+                            Check Pow Now
+                          </button>
+                        ) : null}
                       </div>
                       {powAlertsStatus ? <div className="profile-alerts-status">{powAlertsStatus}</div> : null}
                       {powAlertCheckResult ? <div className="profile-alerts-status">{powAlertCheckResult}</div> : null}
@@ -1592,7 +1719,6 @@ function App() {
               />
               <button type="submit">Login</button>
             </form>
-            {authMessage ? <div className="modal-message">{authMessage}</div> : null}
           </div>
         </div>
       ) : null}

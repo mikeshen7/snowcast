@@ -19,7 +19,7 @@ const config = {
     port: parseNumber(process.env.BACKEND_PORT) || 3001,
     adminEnabled: process.env.BACKEND_ADMIN_ENABLED === 'true',
     cookieSecure: process.env.BACKEND_COOKIE_SECURE === 'true',
-    ownerEmail: (process.env.BACKEND_OWNER_EMAIL || '').trim().toLowerCase(),
+    adminEmail: (process.env.BACKEND_ADMIN_EMAIL || '').trim().toLowerCase(),
     sessionSecret: process.env.BACKEND_SESSION_SECRET || '',
     adminApiToken: process.env.ADMIN_API_TOKEN || '',
   },

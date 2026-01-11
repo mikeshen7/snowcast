@@ -986,6 +986,15 @@ select option {
   border: 1px solid rgba(13, 27, 42, 0.12);
 }
 
+.profile-input {
+  min-width: 200px;
+  color: var(--ink-900);
+  background: rgba(13, 27, 42, 0.04);
+  border: 1px solid rgba(13, 27, 42, 0.12);
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
 .profile-action {
   border: 1px solid rgba(13, 27, 42, 0.12);
   background: rgba(13, 27, 42, 0.04);
@@ -1294,8 +1303,21 @@ select option {
   opacity: 0.45;
 }
 
+.day-tile.past-day {
+  background: rgba(13, 27, 42, 0.06);
+  border-color: rgba(13, 27, 42, 0.12);
+}
+
 .day-tile.today {
   border: 1px solid var(--glow-500);
+  outline: 2px solid rgba(77, 147, 230, 0.5);
+  outline-offset: 2px;
+  box-shadow: 0 16px 30px -24px rgba(77, 147, 230, 0.45);
+}
+
+.day-tile.today .day-date {
+  color: var(--glow-500);
+  font-weight: 700;
 }
 
 .day-header {
@@ -1307,6 +1329,17 @@ select option {
   color: var(--ink-500);
   position: relative;
   z-index: 2;
+}
+
+.windy-pill {
+  background: rgba(225, 140, 27, 0.15);
+  color: var(--accent-600);
+  border: 1px solid rgba(225, 140, 27, 0.35);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 .day-body {
