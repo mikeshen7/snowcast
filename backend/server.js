@@ -20,6 +20,7 @@ const frontendAuth = require('./modules/frontendAuth');
 const frontendPreferences = require('./modules/frontendPreferences');
 const powAlerts = require('./modules/powAlerts');
 const discountCodes = require('./modules/discountCodes');
+const engagement = require('./modules/engagement');
 const {
   requireAdminSession,
   handleRequestMagicLink,
@@ -32,6 +33,7 @@ const { trackUsage } = require('./modules/usageTracker');
 const adminApiClients = require('./modules/adminApiClients');
 const adminUsers = require('./modules/adminUsers');
 const adminRoles = require('./modules/adminRoles');
+const adminEngagement = require('./modules/adminEngagement');
 const { createFixedWindowRateLimiter } = require('./modules/rateLimit');
 const ADMIN_ENABLED = config.backend.adminEnabled;
 
@@ -70,6 +72,7 @@ app.get('/auth/session', (req, res, next) => frontendAuth.handleSessionStatus(re
 app.post('/auth/logout', (req, res, next) => frontendAuth.handleLogout(req, res, next));
 app.get('/user/preferences', (req, res, next) => frontendPreferences.handleGetPreferences(req, res, next));
 app.put('/user/preferences', (req, res, next) => frontendPreferences.handleUpdatePreferences(req, res, next));
+app.post('/events', (req, res, next) => engagement.handleTrackEvent(req, res, next));
 app.get('/user/alerts', (req, res, next) => powAlerts.handleListAlerts(req, res, next));
 app.post('/user/alerts', (req, res, next) => powAlerts.handleCreateAlert(req, res, next));
 app.put('/user/alerts/:id', (req, res, next) => powAlerts.handleUpdateAlert(req, res, next));
@@ -129,6 +132,7 @@ if (ADMIN_ENABLED) {
   app.delete('/admin/discount-codes/:id', requireAdminSession, (req, res, next) => discountCodes.deleteCode(req, res, next));
   app.get('/admin/roles', requireAdminSession, (req, res, next) => adminRoles.listRoles(req, res, next));
   app.put('/admin/roles/:code', requireAdminSession, (req, res, next) => adminRoles.updateRole(req, res, next));
+  app.get('/admin/engagement/summary', requireAdminSession, (req, res, next) => adminEngagement.endpointSummary(req, res, next));
   app.get('/admin/locations/backfill', requireAdminSession, (req, res, next) => locations.endpointListBackfillLocations(req, res, next));
   app.post('/admin/backfill', requireAdminSession, async (req, res) => {
     try {

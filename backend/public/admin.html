@@ -26,6 +26,7 @@
     .tab-btn.active { background: #fff; border-bottom: 2px solid #007bff; color: #000; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.75rem; }
     .flex-row { display: flex; gap: 1rem; flex-wrap: wrap; }
     .flex-row label { margin-right: 0; }
     label.query-group { display: flex; align-items: center; gap: 0.5rem; }
@@ -127,6 +128,7 @@
       <button class="tab-btn" data-tab="rolesTab">Roles</button>
       <button class="tab-btn" data-tab="discountCodesTab">Discount Codes</button>
       <button class="tab-btn" data-tab="apiKeysTab">API Keys</button>
+      <button class="tab-btn" data-tab="engagementTab">Engagement</button>
       <button class="tab-btn" data-tab="configTab">Config</button>
     </div>
 
@@ -305,6 +307,66 @@
         <h3>Recent Access</h3>
         <div id="apiClientAccessStatus" class="status"></div>
         <ul id="apiClientAccessList"></ul>
+      </div>
+    </div>
+
+    <div id="engagementTab" class="tab-panel">
+      <h2>Engagement</h2>
+      <div class="flex-row">
+        <label>
+          Range:
+          <select id="engagementRange">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </label>
+        <button type="button" id="engagementRefreshBtn">Refresh</button>
+      </div>
+      <div class="card" style="margin-top:0.75rem;">
+        <h3>Summary</h3>
+        <table>
+          <tbody>
+            <tr><td>Total events</td><td id="engagementTotalEvents">-</td></tr>
+            <tr><td>Unique users</td><td id="engagementUniqueUsers">-</td></tr>
+            <tr><td>Unique sessions</td><td id="engagementUniqueSessions">-</td></tr>
+            <tr><td>New users today</td><td id="engagementNewUsersCount">-</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid-2" style="margin-top:0.75rem;">
+        <div class="card">
+          <h3>Top Events</h3>
+          <table id="engagementTopEventsTable">
+            <thead>
+              <tr><th>Event</th><th>Count</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3>Top Resorts</h3>
+          <table id="engagementTopLocationsTable">
+            <thead>
+              <tr><th>Resort</th><th>Count</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1rem;">
+        <h3>New Users Today (Seattle)</h3>
+        <table id="engagementNewUsersTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="engagementStatus" class="status"></div>
       </div>
     </div>
 
@@ -533,6 +595,7 @@
     let sessionUser = null;
     let cachedLocations = [];
     let hasLoadedApiClients = false;
+    let hasLoadedEngagement = false;
     const authGate = document.getElementById('authGate');
     const appContent = document.getElementById('appContent');
     const loginEmailInput = document.getElementById('loginEmail');
@@ -569,6 +632,9 @@
       });
       if (tabId === 'apiKeysTab' && !hasLoadedApiClients) {
         loadApiClients();
+      }
+      if (tabId === 'engagementTab' && !hasLoadedEngagement) {
+        loadEngagement();
       }
       localStorage.setItem(tabStorageKey, tabId);
     }
@@ -902,6 +968,7 @@
         hideTab('configTab');
         hideTab('usersTab');
         hideTab('discountCodesTab');
+        hideTab('engagementTab');
         disableLocationWrites();
       }
       loadLocations();
@@ -938,6 +1005,7 @@
     function showLogin() {
       sessionUser = null;
       hasLoadedApiClients = false;
+      hasLoadedEngagement = false;
       authGate.classList.remove('hidden');
       appContent.classList.add('hidden');
       const statusText = sessionStatus?.querySelector('span');
@@ -1144,6 +1212,19 @@
     const discountCodeStatus = document.getElementById('discountCodeStatus');
     const discountCodesTable = document.getElementById('discountCodesTable');
     const discountCodesBody = discountCodesTable ? discountCodesTable.querySelector('tbody') : null;
+    const engagementRange = document.getElementById('engagementRange');
+    const engagementRefreshBtn = document.getElementById('engagementRefreshBtn');
+    const engagementTotalEvents = document.getElementById('engagementTotalEvents');
+    const engagementUniqueUsers = document.getElementById('engagementUniqueUsers');
+    const engagementUniqueSessions = document.getElementById('engagementUniqueSessions');
+    const engagementNewUsersCount = document.getElementById('engagementNewUsersCount');
+    const engagementTopEventsTable = document.getElementById('engagementTopEventsTable');
+    const engagementTopEventsBody = engagementTopEventsTable ? engagementTopEventsTable.querySelector('tbody') : null;
+    const engagementTopLocationsTable = document.getElementById('engagementTopLocationsTable');
+    const engagementTopLocationsBody = engagementTopLocationsTable ? engagementTopLocationsTable.querySelector('tbody') : null;
+    const engagementNewUsersTable = document.getElementById('engagementNewUsersTable');
+    const engagementNewUsersBody = engagementNewUsersTable ? engagementNewUsersTable.querySelector('tbody') : null;
+    const engagementStatus = document.getElementById('engagementStatus');
 
     const DEFAULT_ROLE_LABELS = {
       guest: 'Guest',
@@ -1349,6 +1430,12 @@
     }
     if (discountCodeCancelBtn) {
       discountCodeCancelBtn.addEventListener('click', () => closeDiscountCodeModal());
+    }
+    if (engagementRefreshBtn) {
+      engagementRefreshBtn.addEventListener('click', () => loadEngagement(true));
+    }
+    if (engagementRange) {
+      engagementRange.addEventListener('change', () => loadEngagement(true));
     }
 
     function updateLocationPagination(pageSize, resultsCount) {
@@ -2444,6 +2531,80 @@
       } catch (err) {
         discountCodeStatus.textContent = err.message;
         showToast(err.message, true);
+      }
+    }
+
+    async function loadEngagement(force = false) {
+      if (hasLoadedEngagement && !force) return;
+      hasLoadedEngagement = true;
+      await loadEngagementSummary();
+    }
+
+    async function loadEngagementSummary() {
+      if (!engagementStatus) return;
+      const days = engagementRange ? Number(engagementRange.value) : 7;
+      engagementStatus.textContent = 'Loading engagement summary...';
+      try {
+        const res = await authFetch(`/admin/engagement/summary?days=${days}`);
+        if (!res.ok) throw new Error('Failed to load engagement summary');
+        const data = await res.json();
+        if (engagementTotalEvents) engagementTotalEvents.textContent = String(data.totalEvents ?? '-');
+        if (engagementUniqueUsers) engagementUniqueUsers.textContent = String(data.uniqueUsers ?? '-');
+        if (engagementUniqueSessions) engagementUniqueSessions.textContent = String(data.uniqueSessions ?? '-');
+        if (engagementNewUsersCount) engagementNewUsersCount.textContent = String(data.newUsersCount ?? '-');
+        renderEngagementTopEvents(data.topEvents || []);
+        renderEngagementTopLocations(data.topLocations || []);
+        renderEngagementNewUsers(data.newUsers || []);
+        engagementStatus.textContent = '';
+      } catch (err) {
+        engagementStatus.textContent = err.message;
+        showToast(err.message, true);
+      }
+    }
+
+    function renderEngagementTopEvents(events) {
+      if (!engagementTopEventsBody) return;
+      engagementTopEventsBody.innerHTML = '';
+      if (!events.length) {
+        engagementTopEventsBody.innerHTML = '<tr><td colspan="2">No data</td></tr>';
+        return;
+      }
+      events.forEach((event) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${event.event || ''}</td><td>${event.count ?? 0}</td>`;
+        engagementTopEventsBody.appendChild(tr);
+      });
+    }
+
+    function renderEngagementTopLocations(locations) {
+      if (!engagementTopLocationsBody) return;
+      engagementTopLocationsBody.innerHTML = '';
+      if (!locations.length) {
+        engagementTopLocationsBody.innerHTML = '<tr><td colspan="2">No data</td></tr>';
+        return;
+      }
+      locations.forEach((location) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${location.name || 'Unknown'}</td><td>${location.count ?? 0}</td>`;
+        engagementTopLocationsBody.appendChild(tr);
+      });
+    }
+
+    function renderEngagementNewUsers(users) {
+      if (!engagementNewUsersBody || !engagementNewUsersTable) return;
+      engagementNewUsersBody.innerHTML = '';
+      (users || []).forEach((user) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${user.email || ''}</td>
+          <td>${user.name || ''}</td>
+          <td>${formatDateTimeLocal(user.createdAt)}</td>
+        `;
+        engagementNewUsersBody.appendChild(tr);
+      });
+      engagementNewUsersTable.style.display = users.length ? 'table' : 'none';
+      if (!users.length && engagementStatus) {
+        engagementStatus.textContent = 'No new users today.';
       }
     }
 

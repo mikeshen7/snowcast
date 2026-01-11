@@ -123,7 +123,7 @@ async function handleRequestMagicLink(request, response) {
     } catch (error) {
       console.error('*** frontend signup closed email error:', error.message);
     }
-    return response.status(200).send({ ok: true });
+    return response.status(200).send({ ok: true, closedSignup: true });
   }
   if (!user && ALLOW_NEW_USERS) {
     user = await adminUserDb.create({

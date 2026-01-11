@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import Icon from './Icon';
 import snowcastLogo from './assets/snowcast.png';
@@ -24,6 +24,7 @@ import {
   deletePowAlert,
   checkPowAlerts,
   redeemDiscountCode,
+  trackEngagementEvent,
 } from './api';
 import {
   buildCalendarRange,
@@ -57,6 +58,7 @@ const DEFAULT_ROLE_LIMITS = {
 const UNIT_STORAGE_KEY = 'snowcast-units';
 const FAVORITES_KEY = 'snowcast-favorites';
 const HOME_RESORT_KEY = 'snowcast-home-resort';
+const ENGAGEMENT_SESSION_KEY = 'snowcast-session-id';
 const WIND_MPH_PER_KMH = 0.621371;
 const WINDY_THRESHOLD_MPH = 15;
 const CM_PER_INCH = 2.54;
@@ -84,6 +86,15 @@ function normalizeForecastWindows(map) {
     next[roleKey] = back < 0 || forward < 0 ? null : { back, forward };
   });
   return next;
+}
+
+function getEngagementSessionId() {
+  let sessionId = window.localStorage.getItem(ENGAGEMENT_SESSION_KEY);
+  if (sessionId) return sessionId;
+  const fallback = `sess_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  sessionId = window.crypto?.randomUUID?.() || fallback;
+  window.localStorage.setItem(ENGAGEMENT_SESSION_KEY, sessionId);
+  return sessionId;
 }
 
 function resolveRole(user) {
@@ -270,6 +281,8 @@ function App() {
   const [hourlyModalLoading, setHourlyModalLoading] = useState(false);
   const hourlyCanvasRef = useRef(null);
   const hourlyChartRef = useRef(null);
+  const engagementSessionId = useMemo(() => getEngagementSessionId(), []);
+  const engagementLocationRef = useRef(null);
 
   const role = resolveRole(user);
   const [today] = useState(() => new Date());
@@ -304,6 +317,18 @@ function App() {
     return [...favoriteLocations, ...rest];
   }, [favorites, locations]);
 
+  const sendEngagement = useCallback((eventName, meta = {}, locationId = null) => {
+    trackEngagementEvent({
+      event: eventName,
+      sessionId: engagementSessionId,
+      locationId,
+      meta,
+    }).catch(() => {});
+  }, [engagementSessionId]);
+
+  useEffect(() => {
+    sendEngagement('app_opened', { path: window.location.pathname });
+  }, [sendEngagement]);
 
 
   useEffect(() => {
@@ -387,6 +412,16 @@ function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeView === 'profile') {
+      sendEngagement('view_profile');
+    } else if (activeView === 'pow-alerts') {
+      sendEngagement('view_pow_alerts');
+    } else if (activeView === 'subscription') {
+      sendEngagement('view_subscription');
+    }
+  }, [activeView, sendEngagement]);
 
   useEffect(() => {
     let isMounted = true;
@@ -481,6 +516,18 @@ function App() {
       isMounted = false;
     };
   }, [authStatus, activeView]);
+
+  useEffect(() => {
+    if (!selectedLocationId) return;
+    if (!engagementLocationRef.current) {
+      engagementLocationRef.current = selectedLocationId;
+      return;
+    }
+    if (engagementLocationRef.current !== selectedLocationId) {
+      sendEngagement('resort_selected', {}, selectedLocationId);
+      engagementLocationRef.current = selectedLocationId;
+    }
+  }, [selectedLocationId, sendEngagement]);
 
   useEffect(() => {
     if (selectedLocationId) {
@@ -608,12 +655,20 @@ function App() {
 
   const handleRequestLink = async (event) => {
     event.preventDefault();
+    sendEngagement('login_link_requested', { status: 'attempt' });
     try {
       const redirectPath = `${window.location.pathname}${window.location.search}`;
-      await requestMagicLink(email, redirectPath, 'cookie');
-      showToast('Email sent. Check your inbox for the sign-in link.', 'success', 5000);
-      setEmail('');
+      const payload = await requestMagicLink(email, redirectPath, 'cookie');
+      if (payload?.closedSignup) {
+        sendEngagement('login_link_requested', { status: 'closed' });
+        showToast('Snowcast is under development and not accepting new users yet.', 'warning', 6000);
+      } else {
+        sendEngagement('login_link_requested', { status: 'sent' });
+        showToast('Email sent. Check your inbox for the sign-in link.', 'success', 5000);
+        setEmail('');
+      }
     } catch (error) {
+      sendEngagement('login_link_requested', { status: 'error' });
       showToast(error.message || 'Unable to send login link.', 'error', 6000);
     }
   };
@@ -675,7 +730,6 @@ function App() {
     ? (powAlertLimit < 0 ? 'Unlimited' : String(powAlertLimit))
     : '-';
   const hourlyAccessLabel = roleHourly[role] ? 'Yes' : 'No';
-  const checkPowLabel = roleCheckPow[role] ? 'Yes' : 'No';
   const forecastWindowLabel = roleWindow
     ? `${roleWindow.back} days back / ${roleWindow.forward} days forward`
     : 'Unlimited';
@@ -698,6 +752,7 @@ function App() {
     if (!selectedLocationId) return;
     if (favoriteLimitReached) return;
     setFavorites((prev) => applyFavoriteLimit([...prev, String(selectedLocationId)], favoriteLimit, homeResortId));
+    sendEngagement('favorite_added', {}, selectedLocationId);
   };
 
   const showToast = (message, kind = 'info', duration = 6000, action = null) => {
@@ -766,6 +821,7 @@ function App() {
       return;
     }
     setFavorites((prev) => prev.filter((favId) => String(favId) !== String(id)));
+    sendEngagement('favorite_removed', {}, id);
   };
 
   useEffect(() => {
@@ -809,6 +865,11 @@ function App() {
         active: true,
       }));
       setPowAlertsStatus('');
+      sendEngagement(
+        'pow_alert_created',
+        { windowDays: Number(newAlert.windowDays), thresholdIn: toInches(newAlert.threshold, units) },
+        newAlert.locationId
+      );
     } catch (error) {
       setPowAlertsStatus(error.message || 'Unable to create alert.');
     }
@@ -829,6 +890,7 @@ function App() {
       }
       setDiscountStatus('Discount applied.');
       setDiscountCode('');
+      sendEngagement('discount_redeemed', { ok: true });
     } catch (error) {
       setDiscountStatus(error.message || 'Unable to apply code.');
     }
@@ -844,6 +906,7 @@ function App() {
         active: !alert.active,
       });
       setPowAlerts((prev) => prev.map((item) => (item.id === alert.id ? updated : item)));
+      sendEngagement('pow_alert_toggled', { active: !alert.active }, alert.locationId);
     } catch (error) {
       setPowAlertsStatus(error.message || 'Unable to update alert.');
     }
@@ -851,8 +914,12 @@ function App() {
 
   const handleDeleteAlert = async (alertId) => {
     try {
+      const target = powAlerts.find((alert) => alert.id === alertId);
       await deletePowAlert(alertId);
       setPowAlerts((prev) => prev.filter((alert) => alert.id !== alertId));
+      if (target) {
+        sendEngagement('pow_alert_deleted', {}, target.locationId);
+      }
     } catch (error) {
       setPowAlertsStatus(error.message || 'Unable to delete alert.');
     }
@@ -1008,6 +1075,7 @@ function App() {
       }
       return;
     }
+    sendEngagement('day_opened', { date: toISODate(date) }, selectedLocationId);
     await loadDaySegments(date);
   };
 
@@ -1026,6 +1094,7 @@ function App() {
       });
       return;
     }
+    sendEngagement('hourly_opened', { date: toISODate(dayModalDate) }, selectedLocationId);
     await loadHourly(dayModalDate);
   };
 

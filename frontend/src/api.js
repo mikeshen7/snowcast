@@ -104,6 +104,18 @@ export function redeemDiscountCode(code) {
   });
 }
 
+export function trackEngagementEvent({ event, sessionId, locationId, meta } = {}) {
+  return apiFetch('/events', {
+    method: 'POST',
+    body: {
+      event,
+      sessionId,
+      locationId,
+      meta,
+    },
+  });
+}
+
 
 export function getLocations({ query = '', isSkiResort = true, limit = 50 } = {}) {
   return apiFetch('/locations', {

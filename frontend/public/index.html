@@ -9,6 +9,21 @@
       name="Snowcast"
       content="Snowcast"
     />
+    <script>
+      (function () {
+        var gaId = '%REACT_APP_GA_ID%';
+        if (!gaId || gaId.indexOf('G-') !== 0) return;
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
+        document.head.appendChild(script);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){window.dataLayer.push(arguments);}
+        window.gtag = gtag;
+        gtag('js', new Date());
+        gtag('config', gaId, { send_page_view: true });
+      })();
+    </script>
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/snowcast.png" />
     <!--
       manifest.json provides metadata used when your web app is installed on a
