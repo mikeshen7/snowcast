@@ -1218,14 +1218,25 @@ function App() {
     if (!dayModalDate) return;
     const canViewHourly = roleHourly[role] ?? false;
     if (!canViewHourly) {
-    showToast('Upgrade to see more', 'warning', 6000, {
-        label: 'Upgrade',
-        onClick: () => {
-          setActiveView('subscription');
-          setToastMessage('');
-          setToastAction(null);
-        },
-      });
+      if (!isSignedIn) {
+        showToast('Sign in to see more', 'warning', 6000, {
+          label: 'Sign in',
+          onClick: () => {
+            setShowLogin(true);
+            setToastMessage('');
+            setToastAction(null);
+          },
+        });
+      } else {
+        showToast('Upgrade to see more', 'warning', 6000, {
+          label: 'Upgrade',
+          onClick: () => {
+            setActiveView('subscription');
+            setToastMessage('');
+            setToastAction(null);
+          },
+        });
+      }
       return;
     }
     sendEngagement('hourly_opened', { date: toISODate(dayModalDate) }, selectedLocationId);
