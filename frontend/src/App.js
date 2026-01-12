@@ -63,9 +63,9 @@ const CM_PER_INCH = 2.54;
 const DEFAULT_FORECAST_MODEL = 'median';
 const FORECAST_MODEL_OPTIONS = [
   { value: 'median', label: 'Median' },
-  { value: 'gfs', label: 'GFS' },
-  { value: 'ecmwf', label: 'ECMWF' },
-  { value: 'hrrr', label: 'HRRR' },
+  { value: 'gfs', label: 'NOAA Global' },
+  { value: 'ecmwf', label: 'European Global' },
+  { value: 'hrrr', label: 'NOAA Hi Res' },
 ];
 const DEFAULT_FORECAST_ELEVATION = 'mid';
 const FORECAST_ELEVATION_OPTIONS = [
