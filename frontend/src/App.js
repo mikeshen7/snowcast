@@ -1714,7 +1714,7 @@ function App() {
                       const hasOverview = Boolean(overview);
                       const isToday = differenceInDays(date, today) === 0;
                       const visibleOverview = hasAccess ? overview : null;
-                      const lockedLabel = isSignedIn ? 'Upgrade' : 'Sign-In';
+                      const lockedLabel = '🔒';
                       const snowAmount = Number(visibleOverview?.snowTotal ?? 0);
                       const isPowDay = hasAccess && hasOverview && snowAmount >= 6;
                       const isSnowDay = hasAccess && hasOverview && snowAmount >= 3;

@@ -26,7 +26,7 @@ npm install
 - Default per-minute and daily quotas for new API clients are editable in the Config tab via `API_CLIENT_RATE_LIMIT_DEFAULT` and `API_CLIENT_DAILY_QUOTA_DEFAULT`, so you can raise/lower plan defaults without touching env vars.
 - Requests are rate limited with a token bucket backed by Mongo (`CLIENT_API_RATE_LIMIT_DEFAULT`, `CLIENT_API_DAILY_QUOTA_DEFAULT` in the Config UI control defaults). per-client overrides live on the client document.
 - Usage stats (`totalUsage`, `lastUsedAt`) are updated on each request. Counters reset automatically as the TTL’d usage windows expire.
-- Admin Users tab lets you list admins, create new ones (email/name/roles), and suspend/reactivate accounts.
+- Admin Users tab lets you list users, create new ones (email/name/admin flag), and suspend/reactivate accounts.
 
 ### Admin auth (magic links)
 
@@ -37,7 +37,7 @@ npm install
   - `BACKEND_ADMIN_EMAIL` to allow creating the bootstrap admin when they request a link.
 - Brevo HTTP API: set `BREVO_API_KEY`, `BREVO_API_ENDPOINT_URL`, and `SMTP_FROM`; the app sends magic links via Brevo.
 - Flow: enter admin email on `/admin.html` → backend emails a one-time link → clicking it sets an HttpOnly admin session cookie and redirects back. Logout clears the cookie. Admin requests rely on the session, not bearer tokens.
-- Roles: users have a single role (`free`, `premium`, or `admin`) which affects frontend access. Backend admin access is controlled by the Backend Admin flag or the `admin` role.
+- Roles: `free`/`premium` are derived from `subscriptionExpiresAt`. Admin access is controlled by the `isAdmin` flag.
 - Admin rate limit (requests per minute) is configurable via Config UI (`RATE_LIMIT_ADMIN` key).
   - Session/magic token lifetimes are configurable via Config UI (`TTL_BACKEND_SESSION_MINUTES`, `TTL_FRONTEND_SESSION_MINUTES`, `TTL_AUTH_TOKEN_MINUTES`).
 
@@ -49,6 +49,7 @@ npm install
 - `API_CLIENT_RATE_LIMIT_DEFAULT`: Default per-minute limit for new API clients.
 - `API_CLIENT_DAILY_QUOTA_DEFAULT`: Default daily quota for new API clients.
 - `RATE_LIMIT_ADMIN`: Max admin requests per minute.
+- `WEATHER_API_CALLS_PER_MINUTE`: Throttle for Open-Meteo calls via the queue.
 
 ## Endpoints (key ones)
 
@@ -80,6 +81,7 @@ npm install
   - `startSchedule` fetches hourly weather for all locations; endpoints query Mongo-backed data.
 - Admin:
   - `GET /admin/config` lists config entries, `PUT /admin/config/:key` updates a value (requires admin session cookie)
+  - `GET /admin/queue` shows queued Open-Meteo calls (pending + active)
   - Minimal UI served at `/admin.html` to view/edit config values (radius now uses miles); admin auth is magic-link based
 
 - Health:
@@ -89,8 +91,8 @@ npm install
 ## Maintenance & Schedules
 
 - Locations: cache refresh runs on startup and every 2 hours.
-- Weather: Open-Meteo fetch runs on startup (or delayed) and every 2 hours. Old hourly data (>60 days) and orphaned hourly records (for deleted locations) are cleaned.
-- Backfill: A 14-day historical backfill runs on startup and once per day to keep recent history populated.
+- Weather: Open-Meteo fetch runs on startup (or delayed) and every 2 hours; calls are queued and throttled. Old hourly data (>60 days) and orphaned hourly records (for deleted locations) are cleaned.
+- Backfill: Historical backfill runs on startup and once per day (configurable) and is also queued/throttled.
 
 ## Data & Timezones
 
