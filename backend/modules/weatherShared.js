@@ -13,8 +13,8 @@ const {
 
 const FORECAST_MODELS = ['gfs', 'ecmwf', 'hrrr'];
 const AUTO_MODEL = 'auto';
-const BLEND_MODEL = 'blend';
-const DEFAULT_MODEL = BLEND_MODEL;
+const MEDIAN_MODEL = 'median';
+const DEFAULT_MODEL = MEDIAN_MODEL;
 const DEFAULT_ELEVATION = 'mid';
 const ELEVATION_KEYS = ['base', 'mid', 'top'];
 
@@ -22,7 +22,7 @@ const ELEVATION_KEYS = ['base', 'mid', 'top'];
 function normalizeForecastModel(input) {
   const value = String(input || '').toLowerCase().trim();
   if (!value) return '';
-  if (value === BLEND_MODEL) return BLEND_MODEL;
+  if (value === 'blend' || value === MEDIAN_MODEL) return MEDIAN_MODEL;
   return FORECAST_MODELS.includes(value) ? value : '';
 }
 
@@ -32,12 +32,15 @@ function normalizeElevationKey(input) {
   return ELEVATION_KEYS.includes(value) ? value : '';
 }
 
-// average Values helper.
-function averageValues(values) {
+// median Value helper.
+function medianValue(values) {
   if (!values.length) return null;
-  // sum helper.
-  const sum = values.reduce((total, value) => total + value, 0);
-  return sum / values.length;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[mid];
+  }
+  return (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 // Resolve Precip Type.
@@ -64,8 +67,8 @@ function selectRepresentativeDoc(docs) {
   return sorted[0];
 }
 
-// blend Hourly Docs helper.
-function blendHourlyDocs(docs) {
+// median Hourly Docs helper.
+function medianHourlyDocs(docs) {
   const grouped = new Map();
   for (const doc of docs || []) {
     if (doc.dateTimeEpoch == null) continue;
@@ -100,15 +103,15 @@ function blendHourlyDocs(docs) {
       const values = modelDocs
         .map((doc) => doc[field])
         .filter((value) => Number.isFinite(value));
-      averaged[field] = averageValues(values);
+      averaged[field] = medianValue(values);
     });
     const precipType = resolvePrecipType(averaged.precip, averaged.snow);
     blended.push({
       ...base,
       ...averaged,
       precipType,
-      model: BLEND_MODEL,
-      key: `${base.locationId || base.resort}-${BLEND_MODEL}-${base.elevationKey || DEFAULT_ELEVATION}-${epoch}`,
+      model: MEDIAN_MODEL,
+      key: `${base.locationId || base.resort}-${MEDIAN_MODEL}-${base.elevationKey || DEFAULT_ELEVATION}-${epoch}`,
     });
   }
 
@@ -278,7 +281,7 @@ async function queryHourlyDocs(options) {
       filter.elevationKey = resolvedElevation;
     }
   }
-  if (resolvedModel === BLEND_MODEL) {
+  if (resolvedModel === MEDIAN_MODEL) {
     const modelFilter = [
       { model: { $in: [...FORECAST_MODELS, AUTO_MODEL] } },
       { model: { $exists: false } },
@@ -300,8 +303,8 @@ async function queryHourlyDocs(options) {
     .sort({ dateTimeEpoch: sortDirection })
     .lean();
 
-  let finalDocs = resolvedModel === BLEND_MODEL ? blendHourlyDocs(docs) : docs;
-  if (resolvedModel === BLEND_MODEL && sortDirection === -1) {
+  let finalDocs = resolvedModel === MEDIAN_MODEL ? medianHourlyDocs(docs) : docs;
+  if (resolvedModel === MEDIAN_MODEL && sortDirection === -1) {
     finalDocs = [...finalDocs].sort((a, b) => b.dateTimeEpoch - a.dateTimeEpoch);
   }
   return { docs: finalDocs, location };

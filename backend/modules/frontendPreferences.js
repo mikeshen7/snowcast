@@ -30,7 +30,8 @@ function normalizeUnits(input) {
 // Normalize Forecast Model.
 function normalizeForecastModel(input) {
   const value = String(input || '').toLowerCase().trim();
-  const allowed = new Set(['blend', 'gfs', 'ecmwf', 'hrrr']);
+  if (value === 'blend') return 'median';
+  const allowed = new Set(['median', 'gfs', 'ecmwf', 'hrrr']);
   return allowed.has(value) ? value : '';
 }
 
@@ -56,8 +57,9 @@ async function handleGetPreferences(request, response) {
     favorites: (record.favoriteLocations || []).map((id) => String(id)),
     homeResortId: record.homeResortId ? String(record.homeResortId) : '',
     units: record.unitsPreference || '',
-    forecastModel: record.forecastModel || 'blend',
+    forecastModel: record.forecastModel === 'blend' ? 'median' : (record.forecastModel || 'median'),
     forecastElevation: record.forecastElevation || 'mid',
+    subscriptionExpiresAt: record.subscriptionExpiresAt ? record.subscriptionExpiresAt.toISOString() : '',
   });
 }
 
@@ -105,8 +107,9 @@ async function handleUpdatePreferences(request, response) {
     favorites: limitedFavorites.map((id) => String(id)),
     homeResortId: nextHomeResortId ? String(nextHomeResortId) : '',
     units: record.unitsPreference || '',
-    forecastModel: record.forecastModel || 'blend',
+    forecastModel: record.forecastModel === 'blend' ? 'median' : (record.forecastModel || 'median'),
     forecastElevation: record.forecastElevation || 'mid',
+    subscriptionExpiresAt: record.subscriptionExpiresAt ? record.subscriptionExpiresAt.toISOString() : '',
   });
 }
 

@@ -162,7 +162,7 @@
         <label>
           Model:
           <select id="dailyModelSelect">
-            <option value="blend">Blend</option>
+            <option value="median">Median</option>
             <option value="gfs">GFS</option>
             <option value="ecmwf">ECMWF</option>
             <option value="hrrr">HRRR</option>
@@ -224,7 +224,7 @@
         <label>
           Model:
           <select id="hourlyModelSelect">
-            <option value="blend">Blend</option>
+            <option value="median">Median</option>
             <option value="gfs">GFS</option>
             <option value="ecmwf">ECMWF</option>
             <option value="hrrr">HRRR</option>
@@ -429,11 +429,32 @@
       <div class="flex-row">
         <button id="loadLogsBtn">Refresh Logs</button>
         <label>
+          Start:
+          <input type="date" id="logsStartDate" />
+        </label>
+        <label>
+          End:
+          <input type="date" id="logsEndDate" />
+        </label>
+        <label>
           Type:
           <select id="logsTypeFilter">
             <option value="">All Types</option>
           </select>
         </label>
+        <div class="pagination-controls" style="margin-left:auto; display:flex; align-items:center; gap:0.5rem;">
+          <label>
+            Per page:
+            <select id="logsPageSize">
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </label>
+          <button type="button" id="logsPrevPage">Prev</button>
+          <button type="button" id="logsNextPage">Next</button>
+          <span id="logsPageInfo" class="status" style="margin-left:0.25rem; align-self:center;"></span>
+        </div>
       </div>
       <table id="logsTable" style="display:none;">
         <thead>
@@ -731,7 +752,6 @@
     let hasLoadedEngagement = false;
     let hasLoadedLogs = false;
     let hasLoadedModels = false;
-    let logsCache = [];
     const authGate = document.getElementById('authGate');
     const appContent = document.getElementById('appContent');
     const loginEmailInput = document.getElementById('loginEmail');
@@ -1321,6 +1341,12 @@
     const logsStatus = document.getElementById('logsStatus');
     const loadLogsBtn = document.getElementById('loadLogsBtn');
     const logsTypeFilter = document.getElementById('logsTypeFilter');
+    const logsStartDate = document.getElementById('logsStartDate');
+    const logsEndDate = document.getElementById('logsEndDate');
+    const logsPageSize = document.getElementById('logsPageSize');
+    const logsPrevPage = document.getElementById('logsPrevPage');
+    const logsNextPage = document.getElementById('logsNextPage');
+    const logsPageInfo = document.getElementById('logsPageInfo');
     const modelsTable = document.getElementById('modelsTable');
     const modelsTableBody = modelsTable ? modelsTable.querySelector('tbody') : null;
     const modelsStatus = document.getElementById('modelsStatus');
@@ -1452,6 +1478,8 @@
     let lastFocusedElement = null;
     let locationPage = 1;
     let locationTotal = 0;
+    let logsPage = 1;
+    let logsTotal = 0;
 
     document.getElementById('locationSearchForm').addEventListener('submit', (event) => {
       event.preventDefault();
@@ -1587,7 +1615,40 @@
     if (loadLogsBtn) loadLogsBtn.addEventListener('click', () => loadLogs(true));
     if (logsTypeFilter) {
       logsTypeFilter.addEventListener('change', () => {
-        renderLogsTable(getFilteredLogs());
+        logsPage = 1;
+        loadLogs(true);
+      });
+    }
+    if (logsStartDate) {
+      logsStartDate.addEventListener('change', () => {
+        logsPage = 1;
+        loadLogs(true);
+      });
+    }
+    if (logsEndDate) {
+      logsEndDate.addEventListener('change', () => {
+        logsPage = 1;
+        loadLogs(true);
+      });
+    }
+    if (logsPageSize) {
+      logsPageSize.addEventListener('change', () => {
+        logsPage = 1;
+        loadLogs(true);
+      });
+    }
+    if (logsPrevPage) {
+      logsPrevPage.addEventListener('click', () => {
+        if (logsPage > 1) {
+          logsPage -= 1;
+          loadLogs(true);
+        }
+      });
+    }
+    if (logsNextPage) {
+      logsNextPage.addEventListener('click', () => {
+        logsPage += 1;
+        loadLogs(true);
       });
     }
     if (loadModelsBtn) loadModelsBtn.addEventListener('click', () => loadForecastModels(true));
@@ -2883,16 +2944,28 @@
       hasLoadedLogs = true;
       if (!logsTableBody || !logsStatus) return;
       try {
-        const res = await authFetch('/admin/logs?limit=200');
+        const params = new URLSearchParams();
+        const pageSize = logsPageSize ? Number(logsPageSize.value) : 200;
+        params.set('limit', String(pageSize));
+        params.set('page', String(logsPage));
+        if (logsTypeFilter?.value) params.set('type', logsTypeFilter.value);
+        if (logsStartDate?.value) params.set('startDate', logsStartDate.value);
+        if (logsEndDate?.value) params.set('endDate', logsEndDate.value);
+        const res = await authFetch('/admin/logs?' + params.toString());
         if (!res.ok) {
           const text = await res.text();
           throw new Error(text || 'Failed to load logs');
         }
         const data = await res.json();
         const logs = Array.isArray(data?.logs) ? data.logs : [];
-        logsCache = logs;
-        updateLogsTypeFilter(logsCache);
-        renderLogsTable(getFilteredLogs());
+        if (!logs.length && logsPage > 1) {
+          logsPage -= 1;
+          return loadLogs(true);
+        }
+        logsTotal = Number(data?.total) || 0;
+        updateLogsTypeFilter(logs);
+        renderLogsTable(logs);
+        updateLogsPagination(pageSize, logs.length);
         setStatusToast(logsStatus, `Loaded ${logs.length} logs`);
       } catch (err) {
         setStatusToast(logsStatus, err.message, true);
@@ -2917,10 +2990,17 @@
       }
     }
 
-    function getFilteredLogs() {
-      const filter = logsTypeFilter ? logsTypeFilter.value : '';
-      if (!filter) return logsCache;
-      return logsCache.filter((log) => log.type === filter);
+    function updateLogsPagination(pageSize, resultsCount) {
+      if (!logsPrevPage || !logsNextPage || !logsPageInfo) return;
+      const totalPages = logsTotal && pageSize ? Math.ceil(logsTotal / pageSize) : null;
+      logsPrevPage.disabled = logsPage <= 1;
+      if (totalPages) {
+        logsNextPage.disabled = logsPage >= totalPages;
+        logsPageInfo.textContent = `Page ${logsPage} of ${totalPages}`;
+      } else {
+        logsNextPage.disabled = resultsCount < pageSize;
+        logsPageInfo.textContent = `Page ${logsPage}`;
+      }
     }
 
     function renderLogsTable(logs) {

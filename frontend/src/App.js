@@ -61,9 +61,9 @@ const ENGAGEMENT_SESSION_KEY = 'snowcast-session-id';
 const WIND_KMH_PER_MPH = 1.60934;
 const WINDY_THRESHOLD_MPH = 15;
 const CM_PER_INCH = 2.54;
-const DEFAULT_FORECAST_MODEL = 'blend';
+const DEFAULT_FORECAST_MODEL = 'median';
 const FORECAST_MODEL_OPTIONS = [
-  { value: 'blend', label: 'Blend' },
+  { value: 'median', label: 'Median' },
   { value: 'gfs', label: 'GFS' },
   { value: 'ecmwf', label: 'ECMWF' },
   { value: 'hrrr', label: 'HRRR' },
@@ -102,6 +102,7 @@ function normalizeForecastWindows(map) {
 
 function normalizeForecastModel(value) {
   const next = String(value || '').toLowerCase().trim();
+  if (next === 'blend') return DEFAULT_FORECAST_MODEL;
   const allowed = new Set(FORECAST_MODEL_OPTIONS.map((option) => option.value));
   return allowed.has(next) ? next : DEFAULT_FORECAST_MODEL;
 }
@@ -270,6 +271,7 @@ function App() {
   const [powAlertsStatus, setPowAlertsStatus] = useState('');
   const [powAlertsLoading, setPowAlertsLoading] = useState(false);
   const [powAlertCheckResult, setPowAlertCheckResult] = useState('');
+  const [subscriptionExpiresAt, setSubscriptionExpiresAt] = useState('');
   const [roleLabels, setRoleLabels] = useState(DEFAULT_ROLE_LABELS);
   const [roleLimits, setRoleLimits] = useState(DEFAULT_ROLE_LIMITS);
   const [roleForecast, setRoleForecast] = useState(DEFAULT_ROLE_WINDOWS);
@@ -538,6 +540,7 @@ function App() {
         const nextName = prefs?.name ? String(prefs.name) : '';
         const nextForecastModel = normalizeForecastModel(prefs?.forecastModel);
         const nextForecastElevation = normalizeForecastElevation(prefs?.forecastElevation);
+        const nextExpiresAt = prefs?.subscriptionExpiresAt ? String(prefs.subscriptionExpiresAt) : '';
         setProfileName(nextName);
         setProfileNameDraft(nextName);
         setFavorites(nextFavorites);
@@ -547,6 +550,7 @@ function App() {
         setCalendarModel(nextForecastModel);
         setForecastElevation(nextForecastElevation);
         setCalendarElevation(nextForecastElevation);
+        setSubscriptionExpiresAt(nextExpiresAt);
         setNewAlert((prev) => ({
           ...prev,
           model: nextForecastModel || DEFAULT_FORECAST_MODEL,
@@ -830,6 +834,14 @@ function App() {
     : 'hamburger-button desktop-only';
 
   const roleLabel = roleLabels[role] || role || '-';
+  const expiresLabel = useMemo(() => {
+    if (role === 'admin') return 'Never';
+    if (role !== 'premium') return '';
+    if (!subscriptionExpiresAt) return '';
+    const dt = new Date(subscriptionExpiresAt);
+    if (Number.isNaN(dt.getTime())) return subscriptionExpiresAt;
+    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }, [subscriptionExpiresAt, role]);
   const isDayVisible = (date) => {
     if (!roleWindow) return true;
     const offset = differenceInDays(date, today);
@@ -1895,6 +1907,12 @@ function App() {
                         </button>
                       </div>
                     </div>
+                    {expiresLabel ? (
+                      <div className="profile-row">
+                        <span className="profile-label">Premium expires</span>
+                        <span>{expiresLabel}</span>
+                      </div>
+                    ) : null}
                     <div className="profile-row profile-row-limits">
                       <ul className="profile-limits">
                         <li>Favorites: {favoriteLimitLabel}</li>

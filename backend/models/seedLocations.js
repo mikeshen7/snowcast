@@ -28,7 +28,6 @@ const seedLocations = [
   { name: 'Lake Louise', country: 'Canada', region: 'Alberta', lat: 51.4253, lon: -116.1772, tz_iana: 'America/Edmonton', isSkiResort: true, baseElevationFt: 5400, midElevationFt: 7025, topElevationFt: 8650 },
   { name: 'Mammoth', country: 'United States', region: 'California', lat: 37.6308, lon: -119.0325, tz_iana: 'America/Los_Angeles', isSkiResort: true, baseElevationFt: 7953, midElevationFt: 9503, topElevationFt: 11053 },
   { name: 'Mission Ridge', country: 'United States', region: 'Washington', lat: 47.2883, lon: -120.3927, tz_iana: 'America/Los_Angeles', isSkiResort: true, baseElevationFt: 4570, midElevationFt: 5695, topElevationFt: 6820 },
-  { name: 'Niseko Grand Hirafu', country: 'Japan', region: 'Hokkaido', lat: 42.8642, lon: 140.6883, tz_iana: 'Asia/Tokyo', isSkiResort: true, baseElevationFt: 840, midElevationFt: 2315, topElevationFt: 3790 },
   { name: 'Northstar', country: 'United States', region: 'California', lat: 39.2733, lon: -120.1217, tz_iana: 'America/Los_Angeles', isSkiResort: true, baseElevationFt: 6330, midElevationFt: 7475, topElevationFt: 8610 },
   { name: 'Palisades Tahoe', country: 'United States', region: 'California', lat: 39.1967, lon: -120.2356, tz_iana: 'America/Los_Angeles', isSkiResort: true, baseElevationFt: 6200, midElevationFt: 7600, topElevationFt: 9050 },
   { name: 'Park City', country: 'United States', region: 'Utah', lat: 40.6512, lon: -111.5081, tz_iana: 'America/Denver', isSkiResort: true, baseElevationFt: 6800, midElevationFt: 8412, topElevationFt: 10026 },
@@ -46,7 +45,6 @@ const seedLocations = [
   { name: 'Vail', country: 'United States', region: 'Colorado', lat: 39.6061, lon: -106.355, tz_iana: 'America/Denver', isSkiResort: true, baseElevationFt: 8120, midElevationFt: 9800, topElevationFt: 11480 },
   { name: 'Whistler Blackcomb', country: 'Canada', region: 'British Columbia', lat: 50.1164, lon: -122.9548, tz_iana: 'America/Vancouver', isSkiResort: true, baseElevationFt: 2214, midElevationFt: 4854, topElevationFt: 7494 },
   { name: 'Winter Park', country: 'United States', region: 'Colorado', lat: 39.8868, lon: -105.7625, tz_iana: 'America/Denver', isSkiResort: true, baseElevationFt: 9000, midElevationFt: 10527, topElevationFt: 12060 },
-  { name: 'Zermatt', country: 'Switzerland', region: 'Valais', lat: 46.0207, lon: 7.7491, tz_iana: 'Europe/Zurich', isSkiResort: true, baseElevationFt: 5315, midElevationFt: 9054, topElevationFt: 12792 },
 ];
 
 async function seed() {

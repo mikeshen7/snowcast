@@ -60,12 +60,34 @@ async function fetchAllWeather(options = {}) {
     for (const location of locations || []) {
       for (const elevation of weatherApi.listLocationElevations(location)) {
         try {
+          logAdminEvent({
+            type: 'backfill',
+            message: 'Backfill location started',
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              elevationKey: elevation.key,
+              startDate: requestOptions.startDate,
+              endDate: requestOptions.endDate,
+            },
+          });
           const results = await weatherApi.fetchLocationModels(location, {
             ...requestOptions,
             elevationKey: elevation.key,
             elevationFt: elevation.elevationFt,
           });
           logBackfillShortfalls(location, results);
+          logAdminEvent({
+            type: 'backfill',
+            message: 'Backfill location completed',
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              elevationKey: elevation.key,
+              startDate: requestOptions.startDate,
+              endDate: requestOptions.endDate,
+            },
+          });
         } catch (err) {
           logAdminEvent({
             type: 'fetch_error',
@@ -197,19 +219,41 @@ async function backfillLocations({ locationIds = [] } = {}) {
     startDate,
     endDate,
   }));
-  for (const location of selected) {
-    for (const elevation of weatherApi.listLocationElevations(location)) {
-      try {
-        const results = await weatherApi.fetchLocationModels(location, {
-          startDate,
-          endDate,
-          context: 'backfill',
-          elevationKey: elevation.key,
-          elevationFt: elevation.elevationFt,
-        });
-        logBackfillShortfalls(location, results);
-      } catch (err) {
-        logAdminEvent({
+    for (const location of selected) {
+      for (const elevation of weatherApi.listLocationElevations(location)) {
+        try {
+          logAdminEvent({
+            type: 'backfill',
+            message: 'Manual backfill location started',
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              elevationKey: elevation.key,
+              startDate,
+              endDate,
+            },
+          });
+          const results = await weatherApi.fetchLocationModels(location, {
+            startDate,
+            endDate,
+            context: 'backfill',
+            elevationKey: elevation.key,
+            elevationFt: elevation.elevationFt,
+          });
+          logBackfillShortfalls(location, results);
+          logAdminEvent({
+            type: 'backfill',
+            message: 'Manual backfill location completed',
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              elevationKey: elevation.key,
+              startDate,
+              endDate,
+            },
+          });
+        } catch (err) {
+          logAdminEvent({
           type: 'backfill_error',
           message: err.message,
           meta: {

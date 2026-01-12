@@ -16,14 +16,15 @@ const { config } = require('../config');
 const { getPowAlertLimitForRole, canCheckPow, normalizeRole } = require('./roleConfig');
 
 const SEND_HOUR_LOCAL = 17;
-const DEFAULT_MODEL = 'blend';
+const DEFAULT_MODEL = 'median';
 const DEFAULT_ELEVATION = 'mid';
-const MODEL_OPTIONS = new Set(['blend', 'gfs', 'ecmwf', 'hrrr']);
+const MODEL_OPTIONS = new Set(['median', 'gfs', 'ecmwf', 'hrrr']);
 const ELEVATION_OPTIONS = new Set(['base', 'mid', 'top']);
 
 // Normalize Model.
 function normalizeModel(input) {
   const value = String(input || '').toLowerCase().trim();
+  if (value === 'blend') return 'median';
   return MODEL_OPTIONS.has(value) ? value : '';
 }
 
@@ -185,11 +186,12 @@ async function maybeSendAlert(alert, { manual = false } = {}) {
 
   const emailDays = days;
   const subject = `Snowcast alert: ${location.name}`;
+  const labelModel = alert.model === 'blend' ? 'median' : (alert.model || DEFAULT_MODEL);
   const body = [
     `Resort: ${location.name}`,
     `Window: next ${alert.windowDays} days`,
     `Threshold: ${alert.thresholdIn} in`,
-    `Model: ${String(alert.model || DEFAULT_MODEL).toUpperCase()}`,
+    `Model: ${String(labelModel).toUpperCase()}`,
     `Elevation: ${alert.elevationKey || DEFAULT_ELEVATION}`,
     `Forecast day: ${triggerDay.dateKey}`,
     `Snow total: ${triggerDay.snowTotal.toFixed(1)} in`,
@@ -506,7 +508,7 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, model, elevati
           </tr>
         </table>
         <div style="margin-top:12px;font-size:13px;color:#1b263b;">
-          Window: next ${windowDays} days · Threshold: ${thresholdIn} in · Model: ${String(model || DEFAULT_MODEL).toUpperCase()} · Elevation: ${elevationKey || DEFAULT_ELEVATION}
+          Window: next ${windowDays} days · Threshold: ${thresholdIn} in · Model: ${String(model === 'blend' ? 'median' : (model || DEFAULT_MODEL)).toUpperCase()} · Elevation: ${elevationKey || DEFAULT_ELEVATION}
         </div>
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px;border-collapse:collapse;width:100%;">
           <tbody>
@@ -537,7 +539,7 @@ async function handleListAlerts(request, response) {
     locationName: locationMap.get(String(alert.locationId))?.name || '',
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
-    model: alert.model || DEFAULT_MODEL,
+    model: alert.model === 'blend' ? 'median' : (alert.model || DEFAULT_MODEL),
     elevation: alert.elevationKey || DEFAULT_ELEVATION,
     active: alert.active,
   }));
@@ -583,7 +585,7 @@ async function handleCreateAlert(request, response) {
     locationName: location.name,
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
-    model: alert.model || DEFAULT_MODEL,
+    model: alert.model === 'blend' ? 'median' : (alert.model || DEFAULT_MODEL),
     elevation: alert.elevationKey || DEFAULT_ELEVATION,
     active: alert.active,
   });
@@ -634,7 +636,7 @@ async function handleUpdateAlert(request, response) {
     locationName: location?.name || '',
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
-    model: alert.model || DEFAULT_MODEL,
+    model: alert.model === 'blend' ? 'median' : (alert.model || DEFAULT_MODEL),
     elevation: alert.elevationKey || DEFAULT_ELEVATION,
     active: alert.active,
   });

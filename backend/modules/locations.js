@@ -165,6 +165,17 @@ function triggerLocationBackfill(location) {
   setImmediate(async () => {
     try {
       for (const elevation of weatherApi.listLocationElevations(location)) {
+        logAdminEvent({
+          type: 'backfill',
+          message: 'Location backfill started',
+          meta: {
+            locationId: String(location._id),
+            name: location.name,
+            elevationKey: elevation.key,
+            startDate,
+            endDate,
+          },
+        });
         const results = await weatherApi.fetchLocationModels(location, {
           startDate,
           endDate,
@@ -191,6 +202,17 @@ function triggerLocationBackfill(location) {
               actualEndDate: result.actualEndDate,
             },
           });
+        });
+        logAdminEvent({
+          type: 'backfill',
+          message: 'Location backfill completed',
+          meta: {
+            locationId: String(location._id),
+            name: location.name,
+            elevationKey: elevation.key,
+            startDate,
+            endDate,
+          },
         });
       }
       console.log(JSON.stringify({
