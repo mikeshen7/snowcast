@@ -81,7 +81,7 @@
 
 .current-month {
   color: var(--ink-800);
-  font-size: 14px;
+  font-size: 24px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 2px 0;
