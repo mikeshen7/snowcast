@@ -458,8 +458,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (activeView === 'profile') {
-      sendEngagement('view_profile');
+    if (activeView === 'account') {
+      sendEngagement('view_account');
     } else if (activeView === 'pow-alerts') {
       sendEngagement('view_pow_alerts');
     } else if (activeView === 'subscription') {
@@ -559,6 +559,12 @@ function App() {
       isMounted = false;
     };
   }, [authStatus, setUnits]);
+
+  useEffect(() => {
+    if (authStatus === 'authenticated') {
+      setShowLogin(false);
+    }
+  }, [authStatus]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated' || activeView !== 'pow-alerts') {
@@ -766,6 +772,7 @@ function App() {
         sendEngagement('login_link_requested', { status: 'sent' });
         showToast('Email sent. Check your inbox for the sign-in link.', 'success', 5000);
         setEmail('');
+        setShowLogin(false);
       }
     } catch (error) {
       sendEngagement('login_link_requested', { status: 'error' });
@@ -891,8 +898,8 @@ function App() {
       handleAddFavorite();
       return;
     }
-    showToast('Upgrade your subscription to add more favorites.', 'warning', 6000, {
-      label: 'Manage',
+      showToast('Upgrade to add more', 'warning', 6000, {
+      label: 'Upgrade',
       onClick: () => {
         setActiveView('subscription');
         setToastMessage('');
@@ -947,8 +954,8 @@ function App() {
     }
     const powAlertLimit = rolePowAlerts[role];
     if (Number.isFinite(powAlertLimit) && powAlertLimit >= 0 && powAlerts.length >= powAlertLimit) {
-      showToast('Upgrade your subscription to add more pow alerts.', 'warning', 6000, {
-        label: 'Manage',
+      showToast('Upgrade to add more', 'warning', 6000, {
+        label: 'Upgrade',
         onClick: () => {
           setActiveView('subscription');
           setToastMessage('');
@@ -1191,8 +1198,8 @@ function App() {
           },
         });
       } else {
-        showToast('Upgrade your subscription to see more days.', 'warning', 6000, {
-          label: 'Manage',
+        showToast('Upgrade to see more', 'warning', 6000, {
+          label: 'Upgrade',
           onClick: () => {
             setActiveView('subscription');
             setToastMessage('');
@@ -1211,8 +1218,8 @@ function App() {
     if (!dayModalDate) return;
     const canViewHourly = roleHourly[role] ?? false;
     if (!canViewHourly) {
-      showToast('Upgrade your subscription to view hourly details.', 'warning', 6000, {
-        label: 'Manage',
+    showToast('Upgrade to see more', 'warning', 6000, {
+        label: 'Upgrade',
         onClick: () => {
           setActiveView('subscription');
           setToastMessage('');
@@ -1313,11 +1320,11 @@ function App() {
                   </button>
                   <button
                     type="button"
-                    className={`menu-link text-link ${activeView === 'profile' ? 'active' : ''}`}
-                    onClick={() => setActiveView('profile')}
+                    className={`menu-link text-link ${activeView === 'account' ? 'active' : ''}`}
+                    onClick={() => setActiveView('account')}
                     disabled={!isSignedIn}
                   >
-                    Profile
+                    Account
                   </button>
                   <button
                     type="button"
@@ -1325,7 +1332,7 @@ function App() {
                     onClick={() => setActiveView('subscription')}
                     disabled={!isSignedIn}
                   >
-                    Manage Subscription
+                    Upgrade
                   </button>
                 </div>
                 {showAuthControls && authBlock ? <div className="mobile-section">{authBlock}</div> : null}
@@ -1788,11 +1795,11 @@ function App() {
               ))}
             </div>
           ) : null}
-          {activeView === 'profile' ? (
+          {activeView === 'account' ? (
             <div className="profile-page">
               <div className="profile-card">
                 <div className="profile-header">
-                  <h2>Profile</h2>
+                  <h2>Account</h2>
                   <button type="button" className="ghost" onClick={() => setActiveView('calendar')}>
                     Back to forecast
                   </button>
@@ -1879,11 +1886,11 @@ function App() {
                       </select>
                     </div>
                     <div className="profile-row">
-                      <span className="profile-label">Subscription</span>
+                      <span className="profile-label">Plan</span>
                       <div className="profile-subscription">
                         <span>{roleLabel}</span>
                         <button type="button" className="ghost" onClick={() => setActiveView('subscription')}>
-                          Manage subscription
+                          Upgrade
                         </button>
                       </div>
                     </div>
@@ -1904,7 +1911,7 @@ function App() {
                   </div>
                 ) : (
                   <div className="profile-empty">
-                    <p>Please sign in to view your profile.</p>
+                    <p>Please sign in to view your account.</p>
                     {loginButton}
                   </div>
                 )}
@@ -2040,14 +2047,14 @@ function App() {
             <div className="profile-page">
               <div className="profile-card">
                 <div className="profile-header">
-                  <h2>Subscription</h2>
+                  <h2>Upgrade</h2>
                   <button type="button" className="ghost" onClick={() => setActiveView('calendar')}>
                     Back to forecast
                   </button>
                 </div>
                 {isSignedIn ? (
                   <div className="profile-content">
-                    <p>Subscription management is coming soon.</p>
+                    <p>Upgrade options are coming soon.</p>
                     <form className="discount-form" onSubmit={handleRedeemDiscount}>
                       <label>
                         Discount Code
