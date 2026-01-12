@@ -1444,7 +1444,7 @@ select option {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-500);
-  font-size: 14px;
+  font-size: 24px;
 }
 
 .day-body img {
