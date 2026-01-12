@@ -55,8 +55,6 @@ const DEFAULT_ROLE_LIMITS = {
 };
 
 const UNIT_STORAGE_KEY = 'snowcast-units';
-const FAVORITES_KEY = 'snowcast-favorites';
-const HOME_RESORT_KEY = 'snowcast-home-resort';
 const ENGAGEMENT_SESSION_KEY = 'snowcast-session-id';
 const WIND_KMH_PER_MPH = 1.60934;
 const WINDY_THRESHOLD_MPH = 15;
@@ -147,17 +145,6 @@ function formatTempValue(value, units) {
     return `${Math.round(celsius)}`;
   }
   return `${Math.round(value)}`;
-}
-
-function loadFavorites() {
-  try {
-    const raw = window.localStorage.getItem(FAVORITES_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((id) => String(id)).filter(Boolean);
-  } catch (error) {
-    return [];
-  }
 }
 
 function formatSnow(value, units) {
@@ -266,8 +253,8 @@ function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState(() => window.localStorage.getItem('snowcast-resort') || '');
-  const [favorites, setFavorites] = useState(() => loadFavorites());
-  const [homeResortId, setHomeResortId] = useState(() => window.localStorage.getItem(HOME_RESORT_KEY) || '');
+  const [favorites, setFavorites] = useState([]);
+  const [homeResortId, setHomeResortId] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profileNameDraft, setProfileNameDraft] = useState('');
   const [powAlerts, setPowAlerts] = useState([]);
@@ -529,7 +516,6 @@ function App() {
         setCalendarElevation(DEFAULT_FORECAST_ELEVATION);
         setDayModalElevation(DEFAULT_FORECAST_ELEVATION);
         setHourlyModalElevation(DEFAULT_FORECAST_ELEVATION);
-        window.localStorage.removeItem(FAVORITES_KEY);
       }
       return;
     }
@@ -618,10 +604,6 @@ function App() {
   }, [selectedLocationId]);
 
   useEffect(() => {
-    window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-  }, [favorites]);
-
-  useEffect(() => {
     favoritesRef.current = favorites;
   }, [favorites]);
 
@@ -631,14 +613,6 @@ function App() {
 
   useEffect(() => {
     homeResortRef.current = homeResortId;
-  }, [homeResortId]);
-
-  useEffect(() => {
-    if (homeResortId) {
-      window.localStorage.setItem(HOME_RESORT_KEY, String(homeResortId));
-    } else {
-      window.localStorage.removeItem(HOME_RESORT_KEY);
-    }
   }, [homeResortId]);
 
   useEffect(() => {
