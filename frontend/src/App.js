@@ -24,6 +24,7 @@ import {
   checkPowAlerts,
   redeemDiscountCode,
   trackEngagementEvent,
+  submitFeedback,
 } from './api';
 import {
   buildCalendarRange,
@@ -251,6 +252,9 @@ function App() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [showLogin, setShowLogin] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackName, setFeedbackName] = useState('');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState(() => window.localStorage.getItem('snowcast-resort') || '');
   const [favorites, setFavorites] = useState([]);
@@ -343,6 +347,12 @@ function App() {
     const rest = locations.filter((loc) => !favoritesSet.has(String(loc.id)));
     return [...favoriteLocations, ...rest];
   }, [favorites, locations]);
+
+  const selectedLocationName = useMemo(() => {
+    if (!selectedLocationId) return '';
+    const match = locations.find((loc) => String(loc.id) === String(selectedLocationId));
+    return match?.name || '';
+  }, [locations, selectedLocationId]);
 
   const sendEngagement = useCallback((eventName, meta = {}, locationId = null) => {
     trackEngagementEvent({
@@ -908,6 +918,44 @@ function App() {
     });
   };
 
+  const handleSubmitFeedback = async (event) => {
+    event.preventDefault();
+    const trimmed = feedbackMessage.trim();
+    if (!trimmed) {
+      showToast('Please add a short message.', 'warning', 4000);
+      return;
+    }
+    try {
+      await submitFeedback({
+        message: trimmed,
+        context: {
+          name: feedbackName.trim() || null,
+          view: activeView,
+          path: window.location.pathname,
+          locationId: selectedLocationId || null,
+          locationName: selectedLocationName || null,
+          units,
+          role,
+          forecastModel,
+          forecastElevation,
+          calendarModel,
+          calendarElevation,
+          dayModalModel,
+          dayModalElevation,
+          hourlyModalModel,
+          hourlyModalElevation,
+          signedIn: isSignedIn,
+        },
+      });
+      setFeedbackMessage('');
+      setFeedbackName('');
+      setShowFeedback(false);
+      showToast('Thanks for the feedback!', 'success', 5000);
+    } catch (error) {
+      showToast(error.message || 'Unable to send feedback.', 'error', 6000);
+    }
+  };
+
   const handleHomeResortChange = (event) => {
     setHomeResortId(event.target.value);
   };
@@ -1345,6 +1393,16 @@ function App() {
                   >
                     Upgrade
                   </button>
+                  <button
+                    type="button"
+                    className="menu-link text-link"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      setShowFeedback(true);
+                    }}
+                  >
+                    Feedback
+                  </button>
                 </div>
                 {showAuthControls && authBlock ? <div className="mobile-section">{authBlock}</div> : null}
               </div>
@@ -1573,6 +1631,8 @@ function App() {
                             <div className="row-label">Sky</div>
                             <div className="row-label">Chart</div>
                             <div className="row-label">Precip ({units === 'metric' ? 'cm' : 'in'})</div>
+                            <div className="row-label">Snow ({units === 'metric' ? 'cm' : 'in'})</div>
+                            <div className="row-label">Rain ({units === 'metric' ? 'cm' : 'in'})</div>
                             <div className="row-label">Type</div>
                             <div className="row-label">Wind ({units === 'imperial' ? 'mph' : 'km/h'})</div>
                           </div>
@@ -1624,6 +1684,22 @@ function App() {
                                 {hours.map((hour) => (
                                   <div key={`precip-${hour.dateTimeEpoch}`} className="row-cell">
                                     {formatPrecipValue(hour.precip, units)}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="hourly-row snow-row">
+                                {hours.map((hour) => (
+                                  <div key={`snow-${hour.dateTimeEpoch}`} className="row-cell">
+                                    {formatPrecipValue(hour.snow, units)}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="hourly-row rain-row">
+                                {hours.map((hour) => (
+                                  <div key={`rain-${hour.dateTimeEpoch}`} className="row-cell">
+                                    {formatPrecipValue(hour.rain, units)}
                                   </div>
                                 ))}
                               </div>
@@ -2120,6 +2196,42 @@ function App() {
                 required
               />
               <button type="submit">Login</button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+      {showFeedback ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setShowFeedback(false)}>
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="feedback-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 id="feedback-title">Feedback</h2>
+              <button type="button" className="ghost" onClick={() => setShowFeedback(false)} aria-label="Close feedback">
+                ✕
+              </button>
+            </div>
+            <p className="modal-subtitle">Tell us what we can improve.</p>
+            <form onSubmit={handleSubmitFeedback} className="modal-form">
+              <input
+                type="text"
+                value={feedbackName}
+                onChange={(event) => setFeedbackName(event.target.value)}
+                placeholder="Name (optional)"
+              />
+              <textarea
+                className="modal-textarea"
+                value={feedbackMessage}
+                onChange={(event) => setFeedbackMessage(event.target.value)}
+                placeholder="Your feedback..."
+                rows={5}
+                required
+              />
+              <button type="submit">Send</button>
             </form>
           </div>
         </div>

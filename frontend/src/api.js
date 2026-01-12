@@ -116,6 +116,13 @@ export function trackEngagementEvent({ event, sessionId, locationId, meta } = {}
   });
 }
 
+export function submitFeedback({ message, context } = {}) {
+  return apiFetch('/feedback', {
+    method: 'POST',
+    body: { message, context },
+  });
+}
+
 
 export function getLocations({ query = '', isSkiResort = true, limit = 50 } = {}) {
   return apiFetch('/locations', {

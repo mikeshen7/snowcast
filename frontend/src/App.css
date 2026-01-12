@@ -418,6 +418,17 @@ select option {
   cursor: pointer;
 }
 
+.modal-textarea {
+  min-height: 120px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(13, 27, 42, 0.2);
+  background: #fff;
+  color: var(--ink-900);
+  font-size: 14px;
+}
+
 .app-main {
   flex: 1;
   padding: 24px 5vw 48px;

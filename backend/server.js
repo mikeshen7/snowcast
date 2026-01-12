@@ -21,6 +21,7 @@ const frontendPreferences = require('./modules/frontendPreferences');
 const powAlerts = require('./modules/powAlerts');
 const discountCodes = require('./modules/discountCodes');
 const engagement = require('./modules/engagement');
+const feedback = require('./modules/feedback');
 const {
   requireAdminSession,
   handleRequestMagicLink,
@@ -84,6 +85,7 @@ app.put('/user/alerts/:id', (req, res, next) => powAlerts.handleUpdateAlert(req,
 app.delete('/user/alerts/:id', (req, res, next) => powAlerts.handleDeleteAlert(req, res, next));
 app.post('/user/alerts/check', (req, res, next) => powAlerts.handleCheckAlerts(req, res, next));
 app.post('/user/discount-codes/redeem', (req, res, next) => discountCodes.redeemCode(req, res, next));
+app.post('/feedback', (req, res, next) => feedback.handleSubmitFeedback(req, res, next));
 
 // *** Admin UI gate
 app.get('/admin.html', (request, response) => {
