@@ -1083,24 +1083,7 @@ function App() {
           style={{ width: resortSelectWidth }}
           aria-label="Resort"
         >
-        {orderedLocations.map((loc, index) => {
-          const isFavorite = favorites.includes(String(loc.id));
-          const shouldInsertDivider =
-            index > 0 &&
-            favorites.length > 0 &&
-            !isFavorite &&
-            favorites.includes(String(orderedLocations[index - 1]?.id));
-          return (
-            <React.Fragment key={loc.id}>
-              {shouldInsertDivider ? (
-                <option disabled value="">
-                  ──────────
-                </option>
-              ) : null}
-              <option value={loc.id}>{loc.name}</option>
-            </React.Fragment>
-          );
-        })}
+        {renderResortOptions(orderedLocations)}
         </select>
         <button
           type="button"
@@ -1114,6 +1097,27 @@ function App() {
       </div>
     </div>
   );
+
+  function renderResortOptions(list) {
+    return (list || []).map((loc, index) => {
+      const isFavorite = favorites.includes(String(loc.id));
+      const shouldInsertDivider =
+        index > 0 &&
+        favorites.length > 0 &&
+        !isFavorite &&
+        favorites.includes(String(list[index - 1]?.id));
+      return (
+        <React.Fragment key={loc.id}>
+          {shouldInsertDivider ? (
+            <option disabled value="" key={`divider-${loc.id}`}>
+              ──────────
+            </option>
+          ) : null}
+          <option value={loc.id}>{loc.name}</option>
+        </React.Fragment>
+      );
+    });
+  }
 
   const handleMonthShift = (direction) => {
     setDisplayMonth((prev) => {
@@ -1850,11 +1854,7 @@ function App() {
                         onChange={handleHomeResortChange}
                       >
                         <option value="">Not set</option>
-                        {orderedLocations.map((loc) => (
-                          <option key={loc.id} value={loc.id}>
-                            {loc.name}
-                          </option>
-                        ))}
+                        {renderResortOptions(orderedLocations)}
                       </select>
                     </div>
                     <div className="profile-row">
@@ -1970,11 +1970,7 @@ function App() {
                               required
                             >
                               <option value="">Select resort</option>
-                              {orderedLocations.map((loc) => (
-                                <option key={loc.id} value={loc.id}>
-                                  {loc.name}
-                                </option>
-                              ))}
+                              {renderResortOptions(orderedLocations)}
                             </select>
                             <select
                               value={newAlert.windowDays}
