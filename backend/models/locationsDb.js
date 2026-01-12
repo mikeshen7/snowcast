@@ -15,6 +15,9 @@ const locationsSchema = new Schema(
     lon: { type: Number, required: true },
     tz_iana: { type: String, required: true, trim: true }, // e.g., America/Denver
     isSkiResort: { type: Boolean, default: false },
+    baseElevationFt: { type: Number, required: true },
+    midElevationFt: { type: Number, required: true },
+    topElevationFt: { type: Number, required: true },
   },
   {
     collection: collectionName,

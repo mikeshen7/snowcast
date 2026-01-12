@@ -1,3 +1,4 @@
+// admin Api Clients module.
 'use strict';
 
 const apiClientDb = require('../models/apiClientDb');
@@ -12,6 +13,7 @@ const {
 } = require('./apiClients');
 const apiDailyUsageDb = require('../models/apiDailyUsageDb');
 
+// Handle List Clients.
 async function endpointListClients(request, response, next) {
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -19,6 +21,7 @@ async function endpointListClients(request, response, next) {
       { $match: { createdAt: { $gte: since }, host: { $exists: true } } },
       { $group: { _id: '$client', hosts: { $addToSet: '$host' } } },
     ]);
+    // host Map helper.
     const hostMap = new Map(accessHostAgg.map((entry) => [String(entry._id), entry.hosts || []]));
 
     const now = new Date();
@@ -38,12 +41,14 @@ async function endpointListClients(request, response, next) {
       },
     ]);
 
+    // usage Map helper.
     const usageMap = dailyUsage.reduce((map, entry) => {
       map.set(String(entry._id), entry.count);
       return map;
     }, new Map());
 
     const docs = await apiClientDb.find().sort({ createdAt: -1 }).lean();
+    // with Usage helper.
     const withUsage = docs.map((doc) => {
       const { latestPlainApiKey, ...rest } = doc;
       const hosts = hostMap.get(String(doc._id)) || [];
@@ -61,6 +66,7 @@ async function endpointListClients(request, response, next) {
   }
 }
 
+// Handle Create Client.
 async function endpointCreateClient(request, response, next) {
   try {
     const { name } = request.body || {};
@@ -75,6 +81,7 @@ async function endpointCreateClient(request, response, next) {
   }
 }
 
+// Handle Toggle Client.
 async function endpointToggleClient(request, response, next) {
   try {
     const { id } = request.params;
@@ -90,6 +97,7 @@ async function endpointToggleClient(request, response, next) {
   }
 }
 
+// Handle Update Client.
 async function endpointUpdateClient(request, response, next) {
   try {
     const { id } = request.params;
@@ -116,6 +124,7 @@ async function endpointUpdateClient(request, response, next) {
   }
 }
 
+// Handle Delete Client.
 async function endpointDeleteClient(request, response, next) {
   try {
     const { id } = request.params;
@@ -131,6 +140,7 @@ async function endpointDeleteClient(request, response, next) {
   }
 }
 
+// Build Update Payload.
 function buildUpdatePayload(body) {
   const fields = {};
   if (body.name != null) fields.name = String(body.name).trim();
@@ -158,6 +168,7 @@ function buildUpdatePayload(body) {
   return { fields, regenerateKey };
 }
 
+// Handle Get Client Access.
 async function endpointGetClientAccess(request, response, next) {
   try {
     const { id } = request.params;
@@ -170,6 +181,7 @@ async function endpointGetClientAccess(request, response, next) {
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
+    // distinct Hosts helper.
     const distinctHosts = Array.from(new Set(logs.map((l) => l.host).filter(Boolean)));
     return response.status(200).send({ distinctHosts, logs });
   } catch (error) {

@@ -1,3 +1,4 @@
+// admin Roles module.
 'use strict';
 
 const rolesDb = require('../models/rolesDb');
@@ -5,11 +6,13 @@ const roleConfig = require('./roleConfig');
 
 const ALLOWED_ROLES = new Set(['guest', 'free', 'premium', 'admin']);
 
+// parse Number helper.
 function parseNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+// parse Boolean helper.
 function parseBoolean(value, fallback) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === 'boolean') return value;
@@ -18,6 +21,7 @@ function parseBoolean(value, fallback) {
   return fallback;
 }
 
+// list Roles helper.
 async function listRoles(request, response, next) {
   try {
     await roleConfig.refreshRoleCache();
@@ -28,6 +32,7 @@ async function listRoles(request, response, next) {
   }
 }
 
+// Update Role.
 async function updateRole(request, response, next) {
   try {
     const code = String(request.params?.code || '').trim();

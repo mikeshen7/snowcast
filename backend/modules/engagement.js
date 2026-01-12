@@ -1,3 +1,4 @@
+// engagement module.
 'use strict';
 
 const mongoose = require('mongoose');
@@ -19,11 +20,16 @@ const ALLOWED_EVENTS = new Set([
   'pow_alert_deleted',
   'pow_alert_toggled',
   'discount_redeemed',
+  'heartbeat',
+  'month_changed',
+  'day_shifted',
+  'hourly_shifted',
 ]);
 
 const MAX_META_KEYS = 10;
 const MAX_STRING_LENGTH = 200;
 
+// sanitize Meta helper.
 function sanitizeMeta(raw) {
   if (!raw || typeof raw !== 'object') return {};
   const entries = Object.entries(raw).slice(0, MAX_META_KEYS);
@@ -39,6 +45,7 @@ function sanitizeMeta(raw) {
   return sanitized;
 }
 
+// Handle Track Event.
 async function handleTrackEvent(request, response, next) {
   try {
     const body = request.body || {};

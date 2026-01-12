@@ -21,7 +21,6 @@ const config = {
     cookieSecure: process.env.BACKEND_COOKIE_SECURE === 'true',
     adminEmail: (process.env.BACKEND_ADMIN_EMAIL || '').trim().toLowerCase(),
     sessionSecret: process.env.BACKEND_SESSION_SECRET || '',
-    adminApiToken: process.env.ADMIN_API_TOKEN || '',
   },
   frontend: {
     url: process.env.FRONTEND_URL || '',

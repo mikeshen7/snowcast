@@ -1,3 +1,4 @@
+// client Auth module.
 'use strict';
 
 const apiClientDb = require('../models/apiClientDb');
@@ -7,6 +8,7 @@ const { getFrontendUserFromRequest } = require('./frontendAuth');
 
 const HEADER_NAME = 'x-api-key';
 
+// require Client Api Key helper.
 async function requireClientApiKey(request, response, next) {
   try {
     const adminUser = await getAdminUserFromRequest(request);

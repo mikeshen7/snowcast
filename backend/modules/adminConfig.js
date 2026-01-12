@@ -1,3 +1,4 @@
+// admin Config module.
 'use strict';
 
 const appConfig = require('./appConfig');

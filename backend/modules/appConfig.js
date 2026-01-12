@@ -1,3 +1,4 @@
+// app Config module.
 'use strict';
 
 const appConfigDb = require('../models/appConfigDb');
@@ -5,21 +6,21 @@ const appConfigDb = require('../models/appConfigDb');
 const defaults = {
   MS_PER_DAY: 24 * 60 * 60 * 1000,
   WEATHER_API_MAX_DAYS_BACK: 60,
-  WEATHER_API_MAX_DAYS_FORWARD: 14,
-  DB_BACKFILL_DAYS: 14,
-  DB_FETCH_INTERVAL_HOURS: 2,
+  WEATHER_API_MAX_DAYS_FORWARD: 16,
+  DB_BACKFILL_DAYS: 90,
+  DB_FETCH_INTERVAL_HOURS: 8,
   DB_CLEAN_INTERVAL_HOURS: 24,
   DB_BACKFILL_INTERVAL_HOURS: 24,
-  DB_DAYS_TO_KEEP: 60,
+  DB_DAYS_TO_KEEP: 365,
   LOCATION_FETCH_RADIUS_MI: 30,
   CONFIG_REFRESH_INTERVAL_HOURS: 24,
-  LOCATION_STORE_RADIUS_MI: 5,
+  LOCATION_STORE_RADIUS_MI: 1,
   API_CLIENT_RATE_LIMIT_DEFAULT: 60,
   API_CLIENT_DAILY_QUOTA_DEFAULT: 5000,
   RATE_LIMIT_ADMIN: 60,
-  TTL_BACKEND_SESSION_MINUTES: 60,
+  TTL_BACKEND_SESSION_MINUTES: 10080,
   TTL_AUTH_TOKEN_MINUTES: 15,
-  TTL_FRONTEND_SESSION_MINUTES: 1440,
+  TTL_FRONTEND_SESSION_MINUTES: 10080,
   
 };
 
@@ -94,6 +95,7 @@ const DEFAULT_CONFIG = {
 const cache = new Map();
 let values = buildValuesFromCache();
 
+// Ensure Weather Config Defaults.
 async function ensureWeatherConfigDefaults() {
   await appConfigDb.deleteMany({ key: { $regex: '^ROLE_' } });
   for (const [key, meta] of Object.entries(DEFAULT_CONFIG)) {
@@ -112,6 +114,7 @@ async function ensureWeatherConfigDefaults() {
   await refreshConfigCache();
 }
 
+// Refresh Config Cache.
 async function refreshConfigCache() {
   const docs = await appConfigDb.find({}).lean();
   cache.clear();
@@ -126,6 +129,7 @@ async function refreshConfigCache() {
   return getConfigMap();
 }
 
+// Get Config Map.
 function getConfigMap() {
   const map = {};
   for (const [key, value] of cache.entries()) {
@@ -134,6 +138,7 @@ function getConfigMap() {
   return map;
 }
 
+// Set Config Value.
 async function setConfigValue(key, value) {
   const meta = DEFAULT_CONFIG[key];
   await appConfigDb.updateOne(
@@ -152,6 +157,7 @@ async function setConfigValue(key, value) {
   return { key, value };
 }
 
+// Build Values From Cache.
 function buildValuesFromCache() {
   return {
     MS_PER_DAY: defaults.MS_PER_DAY,
@@ -174,6 +180,7 @@ function buildValuesFromCache() {
   };
 }
 
+// read Value helper.
 function readValue(key, fallback) {
   return cache.has(key) ? cache.get(key) : fallback;
 }

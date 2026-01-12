@@ -1,3 +1,4 @@
+// frontend Preferences module.
 'use strict';
 
 const mongoose = require('mongoose');
@@ -5,6 +6,7 @@ const adminUserDb = require('../models/adminUserDb');
 const { getFrontendUserFromRequest } = require('./frontendAuth');
 const { getFavoriteLimitForRole, normalizeRole } = require('./roleConfig');
 
+// Normalize Favorite Ids.
 function normalizeFavoriteIds(input) {
   if (!Array.isArray(input)) return [];
   const normalized = [];
@@ -19,11 +21,27 @@ function normalizeFavoriteIds(input) {
   return normalized;
 }
 
+// Normalize Units.
 function normalizeUnits(input) {
   const value = String(input || '').toLowerCase();
   return value === 'metric' ? 'metric' : value === 'imperial' ? 'imperial' : '';
 }
 
+// Normalize Forecast Model.
+function normalizeForecastModel(input) {
+  const value = String(input || '').toLowerCase().trim();
+  const allowed = new Set(['blend', 'gfs', 'ecmwf', 'hrrr']);
+  return allowed.has(value) ? value : '';
+}
+
+// Normalize Forecast Elevation.
+function normalizeForecastElevation(input) {
+  const value = String(input || '').toLowerCase().trim();
+  const allowed = new Set(['base', 'mid', 'top']);
+  return allowed.has(value) ? value : '';
+}
+
+// Handle Get Preferences.
 async function handleGetPreferences(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
@@ -38,9 +56,12 @@ async function handleGetPreferences(request, response) {
     favorites: (record.favoriteLocations || []).map((id) => String(id)),
     homeResortId: record.homeResortId ? String(record.homeResortId) : '',
     units: record.unitsPreference || '',
+    forecastModel: record.forecastModel || 'blend',
+    forecastElevation: record.forecastElevation || 'mid',
   });
 }
 
+// Handle Update Preferences.
 async function handleUpdatePreferences(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
@@ -58,6 +79,8 @@ async function handleUpdatePreferences(request, response) {
   const limitedFavorites = favoriteLimit >= 0 ? favorites.slice(0, favoriteLimit) : favorites;
   const nextHomeResortId = mongoose.Types.ObjectId.isValid(homeResortId) ? homeResortId : null;
   const units = normalizeUnits(request.body?.units);
+  const forecastModel = normalizeForecastModel(request.body?.forecastModel);
+  const forecastElevation = normalizeForecastElevation(request.body?.forecastElevation);
   const record = await adminUserDb.findById(user.id);
   if (!record) {
     return response.status(404).send({ error: 'User not found' });
@@ -70,12 +93,20 @@ async function handleUpdatePreferences(request, response) {
   if (units) {
     record.unitsPreference = units;
   }
+  if (forecastModel) {
+    record.forecastModel = forecastModel;
+  }
+  if (forecastElevation) {
+    record.forecastElevation = forecastElevation;
+  }
   await record.save();
   return response.status(200).send({
     name: record.name || '',
     favorites: limitedFavorites.map((id) => String(id)),
     homeResortId: nextHomeResortId ? String(nextHomeResortId) : '',
     units: record.unitsPreference || '',
+    forecastModel: record.forecastModel || 'blend',
+    forecastElevation: record.forecastElevation || 'mid',
   });
 }
 

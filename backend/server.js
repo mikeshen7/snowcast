@@ -34,6 +34,9 @@ const adminApiClients = require('./modules/adminApiClients');
 const adminUsers = require('./modules/adminUsers');
 const adminRoles = require('./modules/adminRoles');
 const adminEngagement = require('./modules/adminEngagement');
+const adminLogs = require('./modules/adminLogs');
+const adminForecastModels = require('./modules/adminForecastModels');
+const forecastModels = require('./modules/forecastModels');
 const { createFixedWindowRateLimiter } = require('./modules/rateLimit');
 const ADMIN_ENABLED = config.backend.adminEnabled;
 
@@ -90,7 +93,14 @@ app.get('/admin.html', (request, response) => {
 
 app.use('/admin.html', express.static(path.join(__dirname, 'public')));
 const PORT = config.backend.port;
-app.listen(PORT, () => console.log(`server listening on ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`server listening on ${PORT}`);
+  adminLogs.logAdminEvent({
+    type: 'server_start',
+    message: `Server started on ${PORT}`,
+    meta: { port: PORT },
+  });
+});
 
 // *** Location Endpoints
 app.use(['/locations', '/weather'], requireClientApiKey, trackUsage);
@@ -133,7 +143,22 @@ if (ADMIN_ENABLED) {
   app.get('/admin/roles', requireAdminSession, (req, res, next) => adminRoles.listRoles(req, res, next));
   app.put('/admin/roles/:code', requireAdminSession, (req, res, next) => adminRoles.updateRole(req, res, next));
   app.get('/admin/engagement/summary', requireAdminSession, (req, res, next) => adminEngagement.endpointSummary(req, res, next));
+  app.get('/admin/logs', requireAdminSession, (req, res, next) => adminLogs.endpointListLogs(req, res, next));
+  app.get('/admin/forecast-models', requireAdminSession, (req, res, next) => adminForecastModels.listForecastModels(req, res, next));
+  app.put('/admin/forecast-models/:code', requireAdminSession, (req, res, next) => adminForecastModels.updateForecastModel(req, res, next));
   app.get('/admin/locations/backfill', requireAdminSession, (req, res, next) => locations.endpointListBackfillLocations(req, res, next));
+  app.post('/admin/forecast/fetch', requireAdminSession, async (req, res) => {
+    try {
+      const { locationIds } = req.body || {};
+      const result = await appMaintenance.fetchForecastLocations({
+        locationIds: Array.isArray(locationIds) ? locationIds : [],
+        force: true,
+      });
+      return res.status(200).send({ ok: true, ...result });
+    } catch (error) {
+      return res.status(400).send({ error: error.message || 'Fetch failed' });
+    }
+  });
   app.post('/admin/backfill', requireAdminSession, async (req, res) => {
     try {
       const { locationIds } = req.body || {};
@@ -181,6 +206,14 @@ app.get('*', (request, response) => {
 });
 app.use((error, request, response, next) => {
   console.error('*** express error:', error.message);
+  adminLogs.logAdminEvent({
+    type: 'error',
+    message: error.message,
+    meta: {
+      path: request?.path,
+      method: request?.method,
+    },
+  });
   return response.status(500).send(error.message);
 });
 
@@ -189,6 +222,8 @@ async function start() {
   await appConfig.ensureWeatherConfigDefaults();
   await roleConfig.ensureRoleDefaults();
   await roleConfig.refreshRoleCache();
+  await forecastModels.ensureForecastModelDefaults();
+  await forecastModels.refreshModelCache();
   await locations.startLocationMaintenance();
   setTimeout(() => {
     appMaintenance.startMaintenance();

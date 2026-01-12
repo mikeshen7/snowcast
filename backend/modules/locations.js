@@ -1,18 +1,23 @@
+// locations module.
 'use strict';
 
 const locationsDb = require('../models/locationsDb');
+const { seedLocations } = require('../models/seedLocations');
 const { lookupCountryRegion } = require('./geoLookup');
 const appConfig = require('./appConfig');
 const weatherApi = require('./weatherApi');
+const { logAdminEvent } = require('./adminLogs');
 
 const locationCache = {
   locations: [],
 };
 
+// Format Date.
 function formatDate(date) {
   return date.toISOString().split('T')[0];
 }
 
+// parse Boolean helper.
 function parseBoolean(value) {
   if (value === undefined) return undefined;
   if (typeof value === 'boolean') return value;
@@ -22,8 +27,17 @@ function parseBoolean(value) {
   return undefined;
 }
 
+// parse Elevation helper.
+function parseElevation(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+// haversine Km helper.
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371; // Earth radius in km
+  // to Rad helper.
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -35,6 +49,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// derive Country Region helper.
 async function deriveCountryRegion(lat, lon) {
   try {
     return await lookupCountryRegion(lat, lon);
@@ -44,6 +59,7 @@ async function deriveCountryRegion(lat, lon) {
   }
 }
 
+// Ensure Location Not Too Close.
 async function ensureLocationNotTooClose(lat, lon, excludeId) {
   const radiusMi = appConfig.values().LOCATION_STORE_RADIUS_MI;
   if (!radiusMi || radiusMi <= 0) {
@@ -68,9 +84,10 @@ async function ensureLocationNotTooClose(lat, lon, excludeId) {
   }
 }
 
+// Handle Create Location.
 async function endpointCreateLocation(request, response, next) {
   try {
-    const { name, lat, lon, tz_iana, isSkiResort } = request.body || {};
+    const { name, lat, lon, tz_iana, isSkiResort, baseElevationFt, midElevationFt, topElevationFt } = request.body || {};
     if (!name || lat === undefined || lon === undefined || !tz_iana) {
       return response.status(400).send('name, lat, lon, and tz_iana are required');
     }
@@ -93,6 +110,9 @@ async function endpointCreateLocation(request, response, next) {
       lon: numericLon,
       tz_iana: String(tz_iana).trim(),
       isSkiResort: parseBoolean(isSkiResort) ?? false,
+      baseElevationFt: parseElevation(baseElevationFt),
+      midElevationFt: parseElevation(midElevationFt),
+      topElevationFt: parseElevation(topElevationFt),
     });
 
     await refreshLocationsCache();
@@ -102,6 +122,11 @@ async function endpointCreateLocation(request, response, next) {
       locationId: String(doc._id),
       name: doc.name,
     }));
+    logAdminEvent({
+      type: 'location_created',
+      message: doc.name,
+      meta: { locationId: String(doc._id) },
+    });
 
     triggerLocationBackfill(doc);
 
@@ -114,6 +139,9 @@ async function endpointCreateLocation(request, response, next) {
       lon: doc.lon,
       tz_iana: doc.tz_iana,
       isSkiResort: doc.isSkiResort,
+      baseElevationFt: doc.baseElevationFt ?? null,
+      midElevationFt: doc.midElevationFt ?? null,
+      topElevationFt: doc.topElevationFt ?? null,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -129,13 +157,42 @@ async function endpointCreateLocation(request, response, next) {
   }
 }
 
+// trigger Location Backfill helper.
 function triggerLocationBackfill(location) {
   const config = appConfig.values();
   const endDate = formatDate(new Date());
   const startDate = formatDate(new Date(Date.now() - config.DB_BACKFILL_DAYS * config.MS_PER_DAY));
   setImmediate(async () => {
     try {
-      await weatherApi.fetchLocation(location, { startDate, endDate, context: 'backfill' });
+      for (const elevation of weatherApi.listLocationElevations(location)) {
+        const results = await weatherApi.fetchLocationModels(location, {
+          startDate,
+          endDate,
+          context: 'backfill',
+          elevationKey: elevation.key,
+          elevationFt: elevation.elevationFt,
+        });
+        (results || []).forEach((result) => {
+          if (result?.requestedDays == null || result?.actualDays == null) return;
+          if (result.actualDays >= result.requestedDays) return;
+          logAdminEvent({
+            type: 'backfill_info',
+            message: 'Backfill returned fewer days than requested',
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              model: result.model,
+              elevationKey: result.elevationKey || elevation.key,
+              requestedDays: result.requestedDays,
+              requestedStartDate: result.requestedStartDate,
+              requestedEndDate: result.requestedEndDate,
+              actualDays: result.actualDays,
+              actualStartDate: result.actualStartDate,
+              actualEndDate: result.actualEndDate,
+            },
+          });
+        });
+      }
       console.log(JSON.stringify({
         event: 'location_backfill_complete',
         locationId: String(location._id),
@@ -143,6 +200,15 @@ function triggerLocationBackfill(location) {
         endDate,
       }));
     } catch (err) {
+      logAdminEvent({
+        type: 'backfill_error',
+        message: err.message,
+        meta: {
+          locationId: String(location._id),
+          name: location.name,
+          details: err?.meta,
+        },
+      });
       console.log(JSON.stringify({
         event: 'location_backfill_error',
         locationId: String(location._id),
@@ -152,6 +218,7 @@ function triggerLocationBackfill(location) {
   });
 }
 
+// Handle Search Locations.
 async function endpointSearchLocations(request, response, next) {
   try {
     const { q = '', isSkiResort } = request.query;
@@ -175,6 +242,7 @@ async function endpointSearchLocations(request, response, next) {
       query.limit(limit);
     }
     const docs = await query.lean();
+    // results helper.
     const results = docs.map((doc) => ({
       id: doc._id,
       name: doc.name,
@@ -184,6 +252,9 @@ async function endpointSearchLocations(request, response, next) {
       lon: doc.lon,
       tz_iana: doc.tz_iana,
       isSkiResort: doc.isSkiResort,
+      baseElevationFt: doc.baseElevationFt ?? null,
+      midElevationFt: doc.midElevationFt ?? null,
+      topElevationFt: doc.topElevationFt ?? null,
     }));
 
     if (page > 0) {
@@ -197,6 +268,7 @@ async function endpointSearchLocations(request, response, next) {
   }
 }
 
+// Handle Nearest Location.
 async function endpointNearestLocation(request, response, next) {
   try {
     const lat = parseFloat(request.query.lat);
@@ -238,6 +310,9 @@ async function endpointNearestLocation(request, response, next) {
       lon: nearest.lon,
       tz_iana: nearest.tz_iana,
       isSkiResort: nearest.isSkiResort,
+      baseElevationFt: nearest.baseElevationFt ?? null,
+      midElevationFt: nearest.midElevationFt ?? null,
+      topElevationFt: nearest.topElevationFt ?? null,
       distanceKm: nearestDistance,
     });
   } catch (error) {
@@ -246,6 +321,7 @@ async function endpointNearestLocation(request, response, next) {
   }
 }
 
+// Handle Delete Location.
 async function endpointDeleteLocation(request, response, next) {
   try {
     const { id } = request.params;
@@ -273,6 +349,7 @@ async function endpointDeleteLocation(request, response, next) {
   }
 }
 
+// Handle Update Location.
 async function endpointUpdateLocation(request, response, next) {
   try {
     const { id } = request.params;
@@ -280,7 +357,7 @@ async function endpointUpdateLocation(request, response, next) {
       return response.status(400).send('Location id is required');
     }
 
-    const { name, lat, lon, tz_iana, isSkiResort } = request.body || {};
+    const { name, lat, lon, tz_iana, isSkiResort, baseElevationFt, midElevationFt, topElevationFt } = request.body || {};
     if (!name || lat === undefined || lon === undefined || !tz_iana) {
       return response.status(400).send('name, lat, lon, and tz_iana are required');
     }
@@ -305,6 +382,9 @@ async function endpointUpdateLocation(request, response, next) {
         lon: numericLon,
         tz_iana: String(tz_iana).trim(),
         isSkiResort: parseBoolean(isSkiResort) ?? false,
+        baseElevationFt: parseElevation(baseElevationFt),
+        midElevationFt: parseElevation(midElevationFt),
+        topElevationFt: parseElevation(topElevationFt),
       },
       { new: true }
     );
@@ -330,6 +410,9 @@ async function endpointUpdateLocation(request, response, next) {
       lon: updated.lon,
       tz_iana: updated.tz_iana,
       isSkiResort: updated.isSkiResort,
+      baseElevationFt: updated.baseElevationFt ?? null,
+      midElevationFt: updated.midElevationFt ?? null,
+      topElevationFt: updated.topElevationFt ?? null,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     });
@@ -345,6 +428,7 @@ async function endpointUpdateLocation(request, response, next) {
   }
 }
 
+// Refresh Locations Cache.
 async function refreshLocationsCache() {
   locationCache.locations = await locationsDb.find({});
   console.log(JSON.stringify({
@@ -354,10 +438,12 @@ async function refreshLocationsCache() {
   return locationCache.locations;
 }
 
+// Get Cached Locations.
 function getCachedLocations() {
   return locationCache.locations;
 }
 
+// Handle Lookup Location Metadata.
 async function endpointLookupLocationMetadata(request, response, next) {
   try {
     const lat = parseFloat(request.query.lat);
@@ -373,9 +459,11 @@ async function endpointLookupLocationMetadata(request, response, next) {
   }
 }
 
+// Handle List Backfill Locations.
 async function endpointListBackfillLocations(request, response, next) {
   try {
     const docs = await locationsDb.find({}).sort({ name: 1 }).lean();
+    // results helper.
     const results = docs.map((doc) => ({
       id: doc._id,
       name: doc.name,
@@ -385,12 +473,35 @@ async function endpointListBackfillLocations(request, response, next) {
       lon: doc.lon,
       tz_iana: doc.tz_iana,
       isSkiResort: doc.isSkiResort,
+      baseElevationFt: doc.baseElevationFt ?? null,
+      midElevationFt: doc.midElevationFt ?? null,
+      topElevationFt: doc.topElevationFt ?? null,
     }));
     return response.status(200).send(results);
   } catch (error) {
     console.error('*** locations endpointListResortLocations error:', error.message);
     next(error);
   }
+}
+
+// Ensure Seed Locations.
+async function ensureSeedLocations() {
+  const count = await locationsDb.countDocuments({});
+  if (count > 0) return false;
+  // ops helper.
+  const ops = seedLocations.map((loc) => ({
+    updateOne: {
+      filter: { lat: loc.lat, lon: loc.lon },
+      update: { $setOnInsert: loc },
+      upsert: true,
+    },
+  }));
+  const result = await locationsDb.bulkWrite(ops, { ordered: false });
+  console.log(JSON.stringify({
+    event: 'locations_seeded',
+    inserted: result.upsertedCount || 0,
+  }));
+  return true;
 }
 
 module.exports = {
@@ -403,7 +514,11 @@ module.exports = {
   endpointLookupLocationMetadata,
   endpointUpdateLocation,
   startLocationMaintenance: async function startLocationMaintenance() {
+    const didSeed = await ensureSeedLocations();
     await refreshLocationsCache();
+    if (didSeed) {
+      console.log('Seeded locations on startup.');
+    }
     setInterval(refreshLocationsCache, 24 * 60 * 60 * 1000);
   },
   refreshLocationsCache,

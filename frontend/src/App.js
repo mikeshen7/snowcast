@@ -20,7 +20,6 @@ import {
   updateUserPreferences,
   listPowAlerts,
   createPowAlert,
-  updatePowAlert,
   deletePowAlert,
   checkPowAlerts,
   redeemDiscountCode,
@@ -59,9 +58,22 @@ const UNIT_STORAGE_KEY = 'snowcast-units';
 const FAVORITES_KEY = 'snowcast-favorites';
 const HOME_RESORT_KEY = 'snowcast-home-resort';
 const ENGAGEMENT_SESSION_KEY = 'snowcast-session-id';
-const WIND_MPH_PER_KMH = 0.621371;
+const WIND_KMH_PER_MPH = 1.60934;
 const WINDY_THRESHOLD_MPH = 15;
 const CM_PER_INCH = 2.54;
+const DEFAULT_FORECAST_MODEL = 'blend';
+const FORECAST_MODEL_OPTIONS = [
+  { value: 'blend', label: 'Blend' },
+  { value: 'gfs', label: 'GFS' },
+  { value: 'ecmwf', label: 'ECMWF' },
+  { value: 'hrrr', label: 'HRRR' },
+];
+const DEFAULT_FORECAST_ELEVATION = 'mid';
+const FORECAST_ELEVATION_OPTIONS = [
+  { value: 'top', label: 'Top' },
+  { value: 'mid', label: 'Mid' },
+  { value: 'base', label: 'Base' },
+];
 
 function normalizeRole(role) {
   if (role === 'basic' || role === 'level1') return 'free';
@@ -86,6 +98,18 @@ function normalizeForecastWindows(map) {
     next[roleKey] = back < 0 || forward < 0 ? null : { back, forward };
   });
   return next;
+}
+
+function normalizeForecastModel(value) {
+  const next = String(value || '').toLowerCase().trim();
+  const allowed = new Set(FORECAST_MODEL_OPTIONS.map((option) => option.value));
+  return allowed.has(next) ? next : DEFAULT_FORECAST_MODEL;
+}
+
+function normalizeForecastElevation(value) {
+  const next = String(value || '').toLowerCase().trim();
+  const allowed = new Set(FORECAST_ELEVATION_OPTIONS.map((option) => option.value));
+  return allowed.has(next) ? next : DEFAULT_FORECAST_ELEVATION;
 }
 
 function getEngagementSessionId() {
@@ -160,14 +184,14 @@ function fromInches(value, units) {
 }
 function formatWind(value, units) {
   if (value == null || Number.isNaN(value)) return '--';
-  const converted = units === 'imperial' ? value * WIND_MPH_PER_KMH : value;
+  const converted = units === 'metric' ? value * WIND_KMH_PER_MPH : value;
   const label = units === 'imperial' ? 'mph' : 'km/h';
   return `${converted.toFixed(1)} ${label}`;
 }
 
 function formatWindValue(value, units) {
   if (value == null || Number.isNaN(value)) return '--';
-  const converted = units === 'imperial' ? value * WIND_MPH_PER_KMH : value;
+  const converted = units === 'metric' ? value * WIND_KMH_PER_MPH : value;
   return `${converted.toFixed(1)}`;
 }
 function getTempScale(hours) {
@@ -261,14 +285,25 @@ function App() {
     locationId: '',
     windowDays: 3,
     threshold: 3,
+    model: DEFAULT_FORECAST_MODEL,
+    elevation: DEFAULT_FORECAST_ELEVATION,
     active: true,
   });
   const favoritesRef = useRef(favorites);
+  const selectedLocationRef = useRef(selectedLocationId);
   const homeResortRef = useRef(homeResortId);
   const [dailyOverview, setDailyOverview] = useState(null);
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [forecastError, setForecastError] = useState('');
   const [units, setUnits] = useStoredUnits();
+  const [forecastModel, setForecastModel] = useState(DEFAULT_FORECAST_MODEL);
+  const [calendarModel, setCalendarModel] = useState(DEFAULT_FORECAST_MODEL);
+  const [dayModalModel, setDayModalModel] = useState(DEFAULT_FORECAST_MODEL);
+  const [hourlyModalModel, setHourlyModalModel] = useState(DEFAULT_FORECAST_MODEL);
+  const [forecastElevation, setForecastElevation] = useState(DEFAULT_FORECAST_ELEVATION);
+  const [calendarElevation, setCalendarElevation] = useState(DEFAULT_FORECAST_ELEVATION);
+  const [dayModalElevation, setDayModalElevation] = useState(DEFAULT_FORECAST_ELEVATION);
+  const [hourlyModalElevation, setHourlyModalElevation] = useState(DEFAULT_FORECAST_ELEVATION);
   const [activeView, setActiveView] = useState('calendar');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dayModalOpen, setDayModalOpen] = useState(false);
@@ -328,6 +363,23 @@ function App() {
 
   useEffect(() => {
     sendEngagement('app_opened', { path: window.location.pathname });
+  }, [sendEngagement]);
+
+  useEffect(() => {
+    let intervalId = null;
+    const heartbeat = () => {
+      if (document.visibilityState === 'visible') {
+        sendEngagement('heartbeat');
+      }
+    };
+    intervalId = window.setInterval(heartbeat, 30000);
+    document.addEventListener('visibilitychange', heartbeat);
+    window.addEventListener('focus', heartbeat);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', heartbeat);
+      window.removeEventListener('focus', heartbeat);
+    };
   }, [sendEngagement]);
 
 
@@ -431,8 +483,14 @@ function App() {
         const safeLocations = Array.isArray(data) ? data : [];
         setLocations(safeLocations);
         if (safeLocations.length) {
+          const selectedIsValid = selectedLocationRef.current
+            ? safeLocations.some((loc) => String(loc.id) === String(selectedLocationRef.current))
+            : false;
+          if (!selectedIsValid) {
+            window.localStorage.removeItem('snowcast-resort');
+          }
           setSelectedLocationId((prev) => {
-            if (prev) return prev;
+            if (prev && safeLocations.some((loc) => String(loc.id) === String(prev))) return prev;
             const currentHomeResort = homeResortRef.current;
             if (currentHomeResort && safeLocations.some((loc) => String(loc.id) === String(currentHomeResort))) {
               return String(currentHomeResort);
@@ -460,6 +518,12 @@ function App() {
         setFavorites([]);
         setProfileName('');
         setProfileNameDraft('');
+        setForecastModel(DEFAULT_FORECAST_MODEL);
+        setCalendarModel(DEFAULT_FORECAST_MODEL);
+        setForecastElevation(DEFAULT_FORECAST_ELEVATION);
+        setCalendarElevation(DEFAULT_FORECAST_ELEVATION);
+        setDayModalElevation(DEFAULT_FORECAST_ELEVATION);
+        setHourlyModalElevation(DEFAULT_FORECAST_ELEVATION);
         window.localStorage.removeItem(FAVORITES_KEY);
       }
       return;
@@ -472,11 +536,22 @@ function App() {
         const nextHomeResortId = prefs?.homeResortId ? String(prefs.homeResortId) : '';
         const nextUnits = prefs?.units === 'metric' || prefs?.units === 'imperial' ? prefs.units : '';
         const nextName = prefs?.name ? String(prefs.name) : '';
+        const nextForecastModel = normalizeForecastModel(prefs?.forecastModel);
+        const nextForecastElevation = normalizeForecastElevation(prefs?.forecastElevation);
         setProfileName(nextName);
         setProfileNameDraft(nextName);
         setFavorites(nextFavorites);
         setHomeResortId(nextHomeResortId);
         setUnits(nextUnits || 'imperial');
+        setForecastModel(nextForecastModel);
+        setCalendarModel(nextForecastModel);
+        setForecastElevation(nextForecastElevation);
+        setCalendarElevation(nextForecastElevation);
+        setNewAlert((prev) => ({
+          ...prev,
+          model: nextForecastModel || DEFAULT_FORECAST_MODEL,
+          elevation: nextForecastElevation || DEFAULT_FORECAST_ELEVATION,
+        }));
         if (nextHomeResortId && !firstLoginHandledRef.current) {
           setSelectedLocationId(nextHomeResortId);
         }
@@ -544,6 +619,10 @@ function App() {
   }, [favorites]);
 
   useEffect(() => {
+    selectedLocationRef.current = selectedLocationId;
+  }, [selectedLocationId]);
+
+  useEffect(() => {
     homeResortRef.current = homeResortId;
   }, [homeResortId]);
 
@@ -563,15 +642,55 @@ function App() {
       homeResortId,
       units,
       name: profileName || undefined,
+      forecastModel,
+      forecastElevation,
     }).catch(() => {});
-  }, [authStatus, favorites, homeResortId, units, profileName]);
+  }, [authStatus, favorites, homeResortId, units, profileName, forecastModel, forecastElevation]);
+
+  useEffect(() => {
+    setCalendarModel(forecastModel);
+  }, [forecastModel]);
+
+  useEffect(() => {
+    setCalendarElevation(forecastElevation);
+  }, [forecastElevation]);
+
+  useEffect(() => {
+    if (!dayModalOpen) {
+      setDayModalModel(forecastModel);
+    }
+  }, [dayModalOpen, forecastModel]);
+
+  useEffect(() => {
+    if (!dayModalOpen) {
+      setDayModalElevation(forecastElevation);
+    }
+  }, [dayModalOpen, forecastElevation]);
+
+  useEffect(() => {
+    if (!hourlyModalOpen) {
+      setHourlyModalModel(forecastModel);
+    }
+  }, [hourlyModalOpen, forecastModel]);
+
+  useEffect(() => {
+    if (!hourlyModalOpen) {
+      setHourlyModalElevation(forecastElevation);
+    }
+  }, [hourlyModalOpen, forecastElevation]);
 
   useEffect(() => {
     if (!selectedLocationId) return;
     setLoadingForecast(true);
     setForecastError('');
 
-    getDailyOverview({ locationId: selectedLocationId, startDateEpoch: startEpoch, endDateEpoch: endEpoch })
+    getDailyOverview({
+      locationId: selectedLocationId,
+      startDateEpoch: startEpoch,
+      endDateEpoch: endEpoch,
+      model: calendarModel,
+      elevation: calendarElevation,
+    })
       .then((overview) => {
         setDailyOverview(overview);
         setLoadingForecast(false);
@@ -580,7 +699,7 @@ function App() {
         setForecastError(error.message || 'Unable to load forecast data.');
         setLoadingForecast(false);
       });
-  }, [selectedLocationId, startEpoch, endEpoch]);
+  }, [selectedLocationId, startEpoch, endEpoch, calendarModel, calendarElevation]);
 
   useEffect(() => {
     if (!hourlyModalOpen || !hourlyModalData.length) return;
@@ -854,6 +973,8 @@ function App() {
         locationId: newAlert.locationId,
         windowDays: Number(newAlert.windowDays),
         thresholdIn: toInches(newAlert.threshold, units),
+        model: newAlert.model,
+        elevation: newAlert.elevation,
         active: newAlert.active,
       });
       setPowAlerts((prev) => [...prev, payload]);
@@ -862,6 +983,8 @@ function App() {
         locationId: '',
         windowDays: 3,
         threshold: prev.threshold,
+        model: prev.model,
+        elevation: prev.elevation,
         active: true,
       }));
       setPowAlertsStatus('');
@@ -896,21 +1019,6 @@ function App() {
     }
   };
 
-
-  const handleToggleAlert = async (alert) => {
-    try {
-      const updated = await updatePowAlert(alert.id, {
-        locationId: alert.locationId,
-        windowDays: alert.windowDays,
-        thresholdIn: alert.thresholdIn,
-        active: !alert.active,
-      });
-      setPowAlerts((prev) => prev.map((item) => (item.id === alert.id ? updated : item)));
-      sendEngagement('pow_alert_toggled', { active: !alert.active }, alert.locationId);
-    } catch (error) {
-      setPowAlertsStatus(error.message || 'Unable to update alert.');
-    }
-  };
 
   const handleDeleteAlert = async (alertId) => {
     try {
@@ -990,7 +1098,14 @@ function App() {
   );
 
   const handleMonthShift = (direction) => {
-    setDisplayMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + direction, 1));
+    setDisplayMonth((prev) => {
+      const next = new Date(prev.getFullYear(), prev.getMonth() + direction, 1);
+      sendEngagement('month_changed', {
+        month: next.getMonth() + 1,
+        year: next.getFullYear(),
+      });
+      return next;
+    });
   };
 
   const shiftDateByDay = (date, direction) => {
@@ -999,11 +1114,17 @@ function App() {
     return next;
   };
 
-  const loadDaySegments = async (date) => {
+  const loadDaySegments = async (date, modelOverride, elevationOverride) => {
     setDayModalOpen(true);
     setDayModalDate(date);
     setDayModalSegments([]);
     setDayModalLoading(true);
+    const selectedModel = normalizeForecastModel(modelOverride || dayModalModel || forecastModel);
+    const selectedElevation = normalizeForecastElevation(
+      elevationOverride || dayModalElevation || forecastElevation
+    );
+    setDayModalModel(selectedModel);
+    setDayModalElevation(selectedElevation);
 
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
@@ -1015,6 +1136,8 @@ function App() {
         locationId: selectedLocationId,
         startDateEpoch: start.getTime(),
         endDateEpoch: end.getTime(),
+        model: selectedModel,
+        elevation: selectedElevation,
       });
       const dayKey = toISODate(date);
       const day = payload?.days?.find((entry) => entry.date === dayKey);
@@ -1026,12 +1149,18 @@ function App() {
     }
   };
 
-  const loadHourly = async (date) => {
+  const loadHourly = async (date, modelOverride, elevationOverride) => {
     setHourlyModalOpen(true);
     setHourlyModalDate(date);
     setHourlyModalData([]);
     setHourlyModalLoading(true);
     setDayModalOpen(false);
+    const selectedModel = normalizeForecastModel(modelOverride || hourlyModalModel || forecastModel);
+    const selectedElevation = normalizeForecastElevation(
+      elevationOverride || hourlyModalElevation || forecastElevation
+    );
+    setHourlyModalModel(selectedModel);
+    setHourlyModalElevation(selectedElevation);
 
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
@@ -1043,6 +1172,8 @@ function App() {
         locationId: selectedLocationId,
         startDateEpoch: start.getTime(),
         endDateEpoch: end.getTime(),
+        model: selectedModel,
+        elevation: selectedElevation,
       });
       setHourlyModalData(payload?.data || []);
     } catch (error) {
@@ -1076,7 +1207,7 @@ function App() {
       return;
     }
     sendEngagement('day_opened', { date: toISODate(date) }, selectedLocationId);
-    await loadDaySegments(date);
+    await loadDaySegments(date, forecastModel, forecastElevation);
   };
 
   const handleHourlyOpen = async (event) => {
@@ -1095,7 +1226,7 @@ function App() {
       return;
     }
     sendEngagement('hourly_opened', { date: toISODate(dayModalDate) }, selectedLocationId);
-    await loadHourly(dayModalDate);
+    await loadHourly(dayModalDate, dayModalModel, dayModalElevation);
   };
 
   const handleDayShift = async (direction, event) => {
@@ -1103,7 +1234,8 @@ function App() {
     if (!dayModalDate) return;
     const nextDate = shiftDateByDay(dayModalDate, direction);
     if (!isDayVisible(nextDate)) return;
-    await loadDaySegments(nextDate);
+    sendEngagement('day_shifted', { date: toISODate(nextDate) }, selectedLocationId);
+    await loadDaySegments(nextDate, dayModalModel, dayModalElevation);
   };
 
   const handleHourlyShift = async (direction, event) => {
@@ -1111,7 +1243,8 @@ function App() {
     if (!hourlyModalDate) return;
     const nextDate = shiftDateByDay(hourlyModalDate, direction);
     if (!isDayVisible(nextDate)) return;
-    await loadHourly(nextDate);
+    sendEngagement('hourly_shifted', { date: toISODate(nextDate) }, selectedLocationId);
+    await loadHourly(nextDate, hourlyModalModel, hourlyModalElevation);
   };
 
   return (
@@ -1176,6 +1309,14 @@ function App() {
                   </button>
                   <button
                     type="button"
+                    className={`menu-link text-link ${activeView === 'pow-alerts' ? 'active' : ''}`}
+                    onClick={() => setActiveView('pow-alerts')}
+                    disabled={!isSignedIn}
+                  >
+                    Pow Alerts
+                  </button>
+                  <button
+                    type="button"
                     className={`menu-link text-link ${activeView === 'profile' ? 'active' : ''}`}
                     onClick={() => setActiveView('profile')}
                     disabled={!isSignedIn}
@@ -1184,11 +1325,11 @@ function App() {
                   </button>
                   <button
                     type="button"
-                    className={`menu-link text-link ${activeView === 'pow-alerts' ? 'active' : ''}`}
-                    onClick={() => setActiveView('pow-alerts')}
+                    className={`menu-link text-link ${activeView === 'subscription' ? 'active' : ''}`}
+                    onClick={() => setActiveView('subscription')}
                     disabled={!isSignedIn}
                   >
-                    Pow Alerts
+                    Manage Subscription
                   </button>
                 </div>
                 {showAuthControls && authBlock ? <div className="mobile-section">{authBlock}</div> : null}
@@ -1198,7 +1339,12 @@ function App() {
 
           {dayModalOpen ? (
             <div className="day-modal-overlay" role="presentation" onClick={() => setDayModalOpen(false)}>
-              <div className="day-modal" role="dialog" aria-modal="true">
+              <div
+                className="day-modal"
+                role="dialog"
+                aria-modal="true"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <div className="day-modal-header">
                   <div>
                     <div className="modal-nav">
@@ -1227,6 +1373,50 @@ function App() {
                       </button>
                     </div>
                     <p>{dayModalDate ? formatWeekday(dayModalDate) : ''}</p>
+                    <div className="modal-controls">
+                      <div className="modal-control">
+                        <span className="modal-model-label">Model</span>
+                        <select
+                          className="modal-model-select"
+                          value={dayModalModel}
+                          onChange={(event) => {
+                            const nextModel = normalizeForecastModel(event.target.value);
+                            setDayModalModel(nextModel);
+                            if (dayModalDate) {
+                              loadDaySegments(dayModalDate, nextModel, dayModalElevation);
+                            }
+                          }}
+                          aria-label="Forecast model"
+                        >
+                          {FORECAST_MODEL_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="modal-control">
+                        <span className="modal-model-label">Elevation</span>
+                        <select
+                          className="modal-model-select"
+                          value={dayModalElevation}
+                          onChange={(event) => {
+                            const nextElevation = normalizeForecastElevation(event.target.value);
+                            setDayModalElevation(nextElevation);
+                            if (dayModalDate) {
+                              loadDaySegments(dayModalDate, dayModalModel, nextElevation);
+                            }
+                          }}
+                          aria-label="Forecast elevation"
+                        >
+                          {FORECAST_ELEVATION_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   <button type="button" className="ghost" onClick={() => setDayModalOpen(false)} aria-label="Close day details">
                     ✕
@@ -1258,7 +1448,7 @@ function App() {
                     })}
                   </div>
                 ) : (
-                  <div className="day-modal-empty">No segment data available.</div>
+                  <div className="day-modal-empty">No {dayModalModel.toUpperCase()} data available.</div>
                 )}
               </div>
             </div>
@@ -1266,7 +1456,12 @@ function App() {
 
           {hourlyModalOpen ? (
             <div className="day-modal-overlay" role="presentation" onClick={() => setHourlyModalOpen(false)}>
-              <div className="day-modal" role="dialog" aria-modal="true">
+              <div
+                className="day-modal"
+                role="dialog"
+                aria-modal="true"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <div className="day-modal-header">
                   <div>
                     <div className="modal-nav">
@@ -1299,6 +1494,50 @@ function App() {
                   <button type="button" className="ghost" onClick={() => setHourlyModalOpen(false)} aria-label="Close hourly details">
                     ✕
                   </button>
+                </div>
+                <div className="modal-controls">
+                  <div className="modal-control">
+                    <span className="modal-model-label">Model</span>
+                    <select
+                      className="modal-model-select"
+                      value={hourlyModalModel}
+                      onChange={(event) => {
+                        const nextModel = normalizeForecastModel(event.target.value);
+                        setHourlyModalModel(nextModel);
+                        if (hourlyModalDate) {
+                          loadHourly(hourlyModalDate, nextModel, hourlyModalElevation);
+                        }
+                      }}
+                      aria-label="Forecast model"
+                    >
+                      {FORECAST_MODEL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="modal-control">
+                    <span className="modal-model-label">Elevation</span>
+                    <select
+                      className="modal-model-select"
+                      value={hourlyModalElevation}
+                      onChange={(event) => {
+                        const nextElevation = normalizeForecastElevation(event.target.value);
+                        setHourlyModalElevation(nextElevation);
+                        if (hourlyModalDate) {
+                          loadHourly(hourlyModalDate, hourlyModalModel, nextElevation);
+                        }
+                      }}
+                      aria-label="Forecast elevation"
+                    >
+                      {FORECAST_ELEVATION_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 {hourlyModalLoading ? (
                   <div className="day-modal-loading">Loading hourly…</div>
@@ -1400,7 +1639,7 @@ function App() {
                     })()}
                   </div>
                 ) : (
-                  <div className="day-modal-empty">No hourly data available.</div>
+                  <div className="day-modal-empty">No {hourlyModalModel.toUpperCase()} data available.</div>
                 )}
               </div>
             </div>
@@ -1412,6 +1651,38 @@ function App() {
                 <span className="current-month">
                   {displayMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
                 </span>
+                <div className="calendar-controls">
+                  <div className="calendar-control">
+                    <span className="calendar-model-label">Model</span>
+                    <select
+                      className="calendar-model-select"
+                      value={calendarModel}
+                      onChange={(event) => setCalendarModel(normalizeForecastModel(event.target.value))}
+                      aria-label="Forecast model"
+                    >
+                      {FORECAST_MODEL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="calendar-control">
+                    <span className="calendar-model-label">Elevation</span>
+                    <select
+                      className="calendar-model-select"
+                      value={calendarElevation}
+                      onChange={(event) => setCalendarElevation(normalizeForecastElevation(event.target.value))}
+                      aria-label="Forecast elevation"
+                    >
+                      {FORECAST_ELEVATION_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
               <div className="calendar-weekdays">
                 <button
@@ -1451,7 +1722,7 @@ function App() {
                       const snowAmount = Number(visibleOverview?.snowTotal ?? 0);
                       const isPowDay = hasAccess && hasOverview && snowAmount >= 6;
                       const isSnowDay = hasAccess && hasOverview && snowAmount >= 3;
-                      const windyValueMph = Number(visibleOverview?.avgWindspeed ?? 0) * WIND_MPH_PER_KMH;
+                      const windyValueMph = Number(visibleOverview?.avgWindspeed ?? 0);
                       const isWindy = hasAccess && hasOverview && Number.isFinite(windyValueMph) && windyValueMph >= WINDY_THRESHOLD_MPH;
                       const precipTotal = Number(visibleOverview?.precipTotal ?? 0);
                       const precipType = hasAccess && hasOverview && precipTotal > 0
@@ -1588,6 +1859,34 @@ function App() {
                       </div>
                     </div>
                     <div className="profile-row">
+                      <span className="profile-label">Forecast model</span>
+                      <select
+                        className="profile-select"
+                        value={forecastModel}
+                        onChange={(event) => setForecastModel(normalizeForecastModel(event.target.value))}
+                      >
+                        {FORECAST_MODEL_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="profile-row">
+                      <span className="profile-label">Forecast elevation</span>
+                      <select
+                        className="profile-select"
+                        value={forecastElevation}
+                        onChange={(event) => setForecastElevation(normalizeForecastElevation(event.target.value))}
+                      >
+                        {FORECAST_ELEVATION_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="profile-row">
                       <span className="profile-label">Subscription</span>
                       <div className="profile-subscription">
                         <span>{roleLabel}</span>
@@ -1628,7 +1927,7 @@ function App() {
                     <div className="profile-alerts">
                       <div className="profile-alerts-header">
                         <div />
-                        {roleCheckPow[role] ? (
+                        {role === 'admin' ? (
                           <button type="button" className="profile-action" onClick={handleCheckPow}>
                             Check Pow Now
                           </button>
@@ -1640,7 +1939,7 @@ function App() {
                         <div className="profile-alerts-status">Loading alerts…</div>
                       ) : (
                         <div className="profile-alerts-table">
-                          <form className="alert-form alert-row alert-form-row" onSubmit={handleCreatePowAlert}>
+                          <form className="alert-form alert-form-row" onSubmit={handleCreatePowAlert}>
                             <select
                               value={newAlert.locationId}
                               onChange={(event) => setNewAlert((prev) => ({ ...prev, locationId: event.target.value }))}
@@ -1673,40 +1972,62 @@ function App() {
                               />
                               <span className="alert-unit">{units === 'metric' ? 'cm' : 'in'}</span>
                             </div>
+                            <select
+                              value={newAlert.model}
+                              onChange={(event) => setNewAlert((prev) => ({ ...prev, model: event.target.value }))}
+                            >
+                              {FORECAST_MODEL_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={newAlert.elevation}
+                              onChange={(event) => setNewAlert((prev) => ({ ...prev, elevation: event.target.value }))}
+                            >
+                              {FORECAST_ELEVATION_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
                             <button type="submit">Add Alert</button>
                           </form>
-                          <div className="alert-row alert-row-header">
-                            <span>Resort</span>
-                            <span>Window</span>
-                            <span>Threshold</span>
-                            <span>Active</span>
-                          </div>
-                          {powAlerts.map((alert) => (
-                            <div className="alert-row" key={alert.id}>
-                              <span>{alert.locationName || 'Resort'}</span>
-                              <span>{alert.windowDays} days</span>
-                              <span>
-                                {fromInches(alert.thresholdIn, units).toFixed(1)} {units === 'metric' ? 'cm' : 'in'}
-                              </span>
-                              <div className="alert-actions">
-                                <label className="toggle">
-                                  <input
-                                    type="checkbox"
-                                    checked={alert.active}
-                                    onChange={() => handleToggleAlert(alert)}
-                                  />
-                                  <span />
-                                </label>
-                                <button
-                                  type="button"
-                                  className="ghost alert-delete"
-                                  onClick={() => handleDeleteAlert(alert.id)}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                          <table className="alert-table">
+                            <thead>
+                              <tr>
+                                <th>Resort</th>
+                                <th>Days</th>
+                                <th>&ge;</th>
+                                <th>Model</th>
+                                <th>Elev.</th>
+                                <th>Remove</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {powAlerts.map((alert) => (
+                                <tr key={alert.id}>
+                                  <td>{alert.locationName || 'Resort'}</td>
+                                  <td>{alert.windowDays}</td>
+                                  <td>
+                                    {fromInches(alert.thresholdIn, units).toFixed(1)} {units === 'metric' ? 'cm' : 'in'}
+                                  </td>
+                                  <td>{(alert.model || DEFAULT_FORECAST_MODEL).toUpperCase()}</td>
+                                  <td>{alert.elevation || DEFAULT_FORECAST_ELEVATION}</td>
+                                  <td className="alert-remove-cell">
+                                    <button
+                                      type="button"
+                                      className="ghost alert-delete"
+                                      onClick={() => handleDeleteAlert(alert.id)}
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                           {!powAlerts.length ? <div className="profile-alerts-empty">No alerts yet.</div> : null}
                         </div>
                       )}

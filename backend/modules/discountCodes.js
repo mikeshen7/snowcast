@@ -1,19 +1,23 @@
+// discount Codes module.
 'use strict';
 
 const discountCodeDb = require('../models/discountCodeDb');
 const adminUserDb = require('../models/adminUserDb');
 const { getFrontendUserFromRequest } = require('./frontendAuth');
 
+// Normalize Code.
 function normalizeCode(input) {
   return String(input || '').trim().toLowerCase();
 }
 
+// Normalize Duration Months.
 function normalizeDurationMonths(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
   return Math.floor(parsed);
 }
 
+// Normalize Max Uses.
 function normalizeMaxUses(value) {
   if (value === undefined || value === null || value === '') return 0;
   const parsed = Number(value);
@@ -21,6 +25,7 @@ function normalizeMaxUses(value) {
   return Math.floor(parsed);
 }
 
+// add Months helper.
 function addMonths(date, months) {
   const base = new Date(date.getTime());
   const year = base.getFullYear();
@@ -35,8 +40,10 @@ function addMonths(date, months) {
   return candidate;
 }
 
+// list Codes helper.
 async function listCodes(request, response) {
   const codes = await discountCodeDb.find().sort({ createdAt: -1 }).lean();
+  // payload helper.
   const payload = codes.map((code) => ({
     id: String(code._id),
     code: code.code,
@@ -49,6 +56,7 @@ async function listCodes(request, response) {
   return response.status(200).send(payload);
 }
 
+// Create Code.
 async function createCode(request, response) {
   const codeValue = normalizeCode(request.body?.code);
   const durationMonths = normalizeDurationMonths(request.body?.durationMonths);
@@ -81,6 +89,7 @@ async function createCode(request, response) {
   });
 }
 
+// Update Code.
 async function updateCode(request, response) {
   const codeId = request.params?.id;
   const code = await discountCodeDb.findById(codeId);
@@ -112,12 +121,14 @@ async function updateCode(request, response) {
   });
 }
 
+// Remove Code.
 async function deleteCode(request, response) {
   const codeId = request.params?.id;
   await discountCodeDb.deleteOne({ _id: codeId });
   return response.status(200).send({ ok: true });
 }
 
+// redeem Code helper.
 async function redeemCode(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {

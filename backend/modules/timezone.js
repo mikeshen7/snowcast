@@ -1,3 +1,4 @@
+// timezone module.
 'use strict';
 
 const EXPLICIT_TZ_REGEX = /(Z|[+-]\d{2}:?\d{2})$/i;
@@ -16,10 +17,12 @@ const WEEKDAY_INDEX = {
 
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// pad2 helper.
 function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
+// Get Date Time Formatter.
 function getDateTimeFormatter(timeZone = 'UTC') {
   if (dateTimeFormatterCache.has(timeZone)) {
     return dateTimeFormatterCache.get(timeZone);
@@ -42,6 +45,7 @@ function getDateTimeFormatter(timeZone = 'UTC') {
   }
 }
 
+// Get Weekday Formatter.
 function getWeekdayFormatter(timeZone = 'UTC') {
   if (weekdayFormatterCache.has(timeZone)) {
     return weekdayFormatterCache.get(timeZone);
@@ -58,6 +62,7 @@ function getWeekdayFormatter(timeZone = 'UTC') {
   }
 }
 
+// parse Local Iso String helper.
 function parseLocalIsoString(input) {
   if (!input) return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(input);
@@ -72,6 +77,7 @@ function parseLocalIsoString(input) {
   };
 }
 
+// Get Local Parts From Utc.
 function getLocalPartsFromUtc(epochMs, timeZone = 'UTC') {
   if (!Number.isFinite(epochMs)) {
     return null;
@@ -92,7 +98,9 @@ function getLocalPartsFromUtc(epochMs, timeZone = 'UTC') {
   }
 
   const parts = formatter.formatToParts(new Date(epochMs));
+  // find Number helper.
   const findNumber = (type) => {
+    // entry helper.
     const entry = parts.find((p) => p.type === type);
     return entry ? Number(entry.value) : null;
   };
@@ -138,6 +146,7 @@ function getLocalPartsFromUtc(epochMs, timeZone = 'UTC') {
   };
 }
 
+// Get Offset For Local Date Time.
 function getOffsetForLocalDateTime(parts, timeZone, fallbackOffsetSeconds = 0) {
   const { year, month, day, hour = 0, minute = 0, second = 0 } = parts;
   const key = `${timeZone}|${year}|${month}|${day}|${hour}|${minute}|${second}`;
@@ -171,6 +180,7 @@ function getOffsetForLocalDateTime(parts, timeZone, fallbackOffsetSeconds = 0) {
   return offsetMs;
 }
 
+// local Date Time To Utc Epoch helper.
 function localDateTimeToUtcEpoch(parts, timeZone = 'UTC', fallbackOffsetSeconds = 0) {
   if (!parts) return null;
   const { year, month, day, hour = 0, minute = 0, second = 0 } = parts;
@@ -183,6 +193,7 @@ function localDateTimeToUtcEpoch(parts, timeZone = 'UTC', fallbackOffsetSeconds 
   return baseMs - offsetMs;
 }
 
+// local Date Time String To Utc Epoch helper.
 function localDateTimeStringToUtcEpoch(isoString, timeZone = 'UTC', fallbackOffsetSeconds = 0) {
   if (!isoString) {
     return null;
@@ -199,6 +210,7 @@ function localDateTimeStringToUtcEpoch(isoString, timeZone = 'UTC', fallbackOffs
   return localDateTimeToUtcEpoch(parts, timeZone, fallbackOffsetSeconds);
 }
 
+// shift Local Date helper.
 function shiftLocalDate(parts, deltaDays) {
   if (!parts || !Number.isFinite(deltaDays)) {
     return null;
@@ -220,6 +232,7 @@ function shiftLocalDate(parts, deltaDays) {
   };
 }
 
+// Format Date Key.
 function formatDateKey(parts) {
   if (!parts) return null;
   const { year, month, day } = parts;
@@ -229,10 +242,12 @@ function formatDateKey(parts) {
   return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
+// Get Weekday Label.
 function getWeekdayLabel(index) {
   return WEEKDAY_LABELS[index ?? 0] || WEEKDAY_LABELS[0];
 }
 
+// Get Local Start Of Day Epoch.
 function getLocalStartOfDayEpoch(parts) {
   if (!parts) return null;
   const { year, month, day, offsetMs = 0 } = parts;

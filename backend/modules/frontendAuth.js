@@ -1,3 +1,4 @@
+// frontend Auth module.
 'use strict';
 
 const crypto = require('crypto');
@@ -26,24 +27,29 @@ const COOKIE_SECURE = IS_DEV ? false : config.frontend.cookieSecure;
 const COOKIE_SAMESITE = IS_DEV ? 'lax' : config.frontend.cookieSameSite;
 const ALLOW_NEW_USERS = config.auth.allowNewUsers;
 
+// Get Session Ttl Minutes.
 function getSessionTtlMinutes() {
   return Number(appConfig.values().TTL_FRONTEND_SESSION_MINUTES) || 60;
 }
 
+// Get Magic Ttl Minutes.
 function getMagicTtlMinutes() {
   return Number(appConfig.values().TTL_AUTH_TOKEN_MINUTES) || 15;
 }
 
+// hash Token helper.
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+// safe Redirect Path helper.
 function safeRedirectPath(raw) {
   if (!raw || typeof raw !== 'string') return '/';
   if (raw.startsWith('/')) return raw;
   return '/';
 }
 
+// Build Redirect Target.
 function buildRedirectTarget(path) {
   if (!FRONTEND_URL) {
     return path;
@@ -56,6 +62,7 @@ function buildRedirectTarget(path) {
   }
 }
 
+// Build Magic Link.
 function buildMagicLink(token, redirectPath) {
   if (!BACKEND_URL) {
     throw new Error('BACKEND_URL not configured');
@@ -66,6 +73,7 @@ function buildMagicLink(token, redirectPath) {
   return url.toString();
 }
 
+// send Magic Link Email helper.
 async function sendMagicLinkEmail(email, link) {
   const expiresMinutes = getMagicTtlMinutes();
   const subject = 'Snowcast login link';
@@ -79,6 +87,7 @@ async function sendMagicLinkEmail(email, link) {
   await sendEmail({ to: email, subject, text });
 }
 
+// send Closed Signup Email helper.
 async function sendClosedSignupEmail(email) {
   const subject = 'Weather Forecast access request';
   const text = [
@@ -89,6 +98,7 @@ async function sendClosedSignupEmail(email) {
   await sendEmail({ to: email, subject, text });
 }
 
+// Create Session Token.
 function createSessionToken(user) {
   if (!SESSION_SECRET) {
     throw new Error('FRONTEND_SESSION_SECRET is not configured');
@@ -99,6 +109,7 @@ function createSessionToken(user) {
   });
 }
 
+// verify Session Token helper.
 function verifySessionToken(token) {
   if (!SESSION_SECRET) return null;
   try {
@@ -108,6 +119,7 @@ function verifySessionToken(token) {
   }
 }
 
+// Handle Request Magic Link.
 async function handleRequestMagicLink(request, response) {
   const email = (request.body?.email || '').trim().toLowerCase();
   if (!email) {
@@ -159,6 +171,7 @@ async function handleRequestMagicLink(request, response) {
   return response.status(200).send({ ok: true });
 }
 
+// Handle Verify Magic Link.
 async function handleVerifyMagicLink(request, response) {
   const token = (request.query?.token || '').trim();
   if (!token) {
@@ -203,6 +216,7 @@ async function handleVerifyMagicLink(request, response) {
   return response.redirect(buildRedirectTarget(redirect));
 }
 
+// Handle Session Status.
 async function handleSessionStatus(request, response) {
   const user = await getFrontendUserFromRequest(request);
   const roleLabels = getRoleLabels();
@@ -223,6 +237,7 @@ async function handleSessionStatus(request, response) {
       roleForecast,
     });
   }
+  // normalized Roles helper.
   const normalizedRoles = (user.roles || []).map((role) => normalizeRole(role));
   return response.status(200).send({
     authenticated: true,
@@ -236,11 +251,13 @@ async function handleSessionStatus(request, response) {
   });
 }
 
+// Handle Logout.
 async function handleLogout(request, response) {
   response.clearCookie(COOKIE_NAME, { path: '/' });
   return response.status(200).send({ ok: true });
 }
 
+// Get Frontend User From Request.
 async function getFrontendUserFromRequest(request) {
   const token = request.cookies?.[COOKIE_NAME];
   const payload = token ? verifySessionToken(token) : null;
@@ -259,6 +276,7 @@ async function getFrontendUserFromRequest(request) {
   };
 }
 
+// Resolve User Role.
 function resolveUserRole(user) {
   const rawRole = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free');
   if (rawRole === 'admin') {

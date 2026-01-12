@@ -1,3 +1,4 @@
+// pow Alerts module.
 'use strict';
 
 const mongoose = require('mongoose');
@@ -15,32 +16,56 @@ const { config } = require('../config');
 const { getPowAlertLimitForRole, canCheckPow, normalizeRole } = require('./roleConfig');
 
 const SEND_HOUR_LOCAL = 17;
+const DEFAULT_MODEL = 'blend';
+const DEFAULT_ELEVATION = 'mid';
+const MODEL_OPTIONS = new Set(['blend', 'gfs', 'ecmwf', 'hrrr']);
+const ELEVATION_OPTIONS = new Set(['base', 'mid', 'top']);
 
+// Normalize Model.
+function normalizeModel(input) {
+  const value = String(input || '').toLowerCase().trim();
+  return MODEL_OPTIONS.has(value) ? value : '';
+}
+
+// Normalize Elevation.
+function normalizeElevation(input) {
+  const value = String(input || '').toLowerCase().trim();
+  return ELEVATION_OPTIONS.has(value) ? value : '';
+}
+
+// Normalize Alert Payload.
 function normalizeAlertPayload(body) {
   const locationId = String(body?.locationId || '').trim();
   const windowDays = Number(body?.windowDays);
   const thresholdIn = Number(body?.thresholdIn);
   const active = body?.active !== false;
+  const model = normalizeModel(body?.model);
+  const elevationKey = normalizeElevation(body?.elevation || body?.elevationKey);
   return {
     locationId,
     windowDays: Number.isFinite(windowDays) ? windowDays : 3,
     thresholdIn: Number.isFinite(thresholdIn) ? thresholdIn : 3,
     active,
+    model: model || DEFAULT_MODEL,
+    elevationKey: elevationKey || DEFAULT_ELEVATION,
   };
 }
 
+// Normalize Window Days.
 function normalizeWindowDays(value) {
   const days = Number(value);
   if (!Number.isFinite(days)) return 3;
   return Math.min(Math.max(Math.round(days), 1), 14);
 }
 
+// Normalize Threshold.
 function normalizeThreshold(value) {
   const threshold = Number(value);
   if (!Number.isFinite(threshold) || threshold < 0) return 0;
   return threshold;
 }
 
+// add Days To Parts helper.
 function addDaysToParts(parts, days) {
   const base = Date.UTC(parts.year, parts.month - 1, parts.day + days, 0, 0, 0, 0);
   const next = new Date(base);
@@ -51,11 +76,14 @@ function addDaysToParts(parts, days) {
   };
 }
 
+// Get Local Date Key.
 function getLocalDateKey(parts) {
+  // pad helper.
   const pad = (value) => String(value).padStart(2, '0');
   return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
 }
 
+// Get Alert Context.
 async function getAlertContext(alert) {
   const [user, location] = await Promise.all([
     adminUserDb.findById(alert.userId).lean(),
@@ -64,8 +92,9 @@ async function getAlertContext(alert) {
   return { user, location };
 }
 
-async function findFirstTriggerDay({ locationId, windowDays, thresholdIn, timeZone }) {
-  const { days } = await loadWindowDays({ locationId, windowDays, timeZone });
+// find First Trigger Day helper.
+async function findFirstTriggerDay({ locationId, windowDays, thresholdIn, timeZone, model, elevationKey }) {
+  const { days } = await loadWindowDays({ locationId, windowDays, timeZone, model, elevationKey });
   if (!Array.isArray(days) || !days.length) {
     return { trigger: null, days: [] };
   }
@@ -84,6 +113,7 @@ async function findFirstTriggerDay({ locationId, windowDays, thresholdIn, timeZo
   return { trigger: null, days };
 }
 
+// expand Window To Full Weeks helper.
 function expandWindowToFullWeeks({ startParts, endParts, timeZone }) {
   const startEpoch = localDateTimeToUtcEpoch({ ...startParts, hour: 0, minute: 0 }, timeZone);
   const startLocal = getLocalPartsFromUtc(startEpoch, timeZone);
@@ -96,18 +126,21 @@ function expandWindowToFullWeeks({ startParts, endParts, timeZone }) {
   return { displayStartParts, displayEndParts };
 }
 
+// Check should Send Now.
 function shouldSendNow(timeZone) {
   const localParts = getLocalPartsFromUtc(Date.now(), timeZone);
   if (!localParts) return false;
   return localParts.hour === SEND_HOUR_LOCAL;
 }
 
+// Get Local Today Key.
 function getLocalTodayKey(timeZone) {
   const localParts = getLocalPartsFromUtc(Date.now(), timeZone);
   if (!localParts) return null;
   return getLocalDateKey(localParts);
 }
 
+// maybe Send Alert helper.
 async function maybeSendAlert(alert, { manual = false } = {}) {
   if (!alert.active) return { sent: false, reason: 'inactive' };
   const { user, location } = await getAlertContext(alert);
@@ -128,6 +161,8 @@ async function maybeSendAlert(alert, { manual = false } = {}) {
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
     timeZone,
+    model: alert.model,
+    elevationKey: alert.elevationKey,
   });
   const triggerDay = windowResult.trigger;
   const days = windowResult.days || [];
@@ -154,6 +189,8 @@ async function maybeSendAlert(alert, { manual = false } = {}) {
     `Resort: ${location.name}`,
     `Window: next ${alert.windowDays} days`,
     `Threshold: ${alert.thresholdIn} in`,
+    `Model: ${String(alert.model || DEFAULT_MODEL).toUpperCase()}`,
+    `Elevation: ${alert.elevationKey || DEFAULT_ELEVATION}`,
     `Forecast day: ${triggerDay.dateKey}`,
     `Snow total: ${triggerDay.snowTotal.toFixed(1)} in`,
     '',
@@ -163,6 +200,8 @@ async function maybeSendAlert(alert, { manual = false } = {}) {
     location,
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
+    model: alert.model,
+    elevationKey: alert.elevationKey,
     days: emailDays,
   });
 
@@ -175,7 +214,8 @@ async function maybeSendAlert(alert, { manual = false } = {}) {
   return { sent: true, triggerDay, days };
 }
 
-async function loadWindowDays({ locationId, windowDays, timeZone }) {
+// Load Window Days.
+async function loadWindowDays({ locationId, windowDays, timeZone, model, elevationKey }) {
   const now = Date.now();
   const localParts = getLocalPartsFromUtc(now, timeZone);
   if (!localParts) {
@@ -196,13 +236,16 @@ async function loadWindowDays({ locationId, windowDays, timeZone }) {
     endDateEpoch: endEpoch,
     sort: 'asc',
     maxDaysForward: 16,
+    model,
+    elevationKey,
   });
 
   const days = aggregateDailyOverview(docs, timeZone);
   return { days: Array.isArray(days) ? days : [] };
 }
 
-async function loadDisplayDays({ locationId, windowDays, timeZone }) {
+// Load Display Days.
+async function loadDisplayDays({ locationId, windowDays, timeZone, model, elevationKey }) {
   const now = Date.now();
   const localParts = getLocalPartsFromUtc(now, timeZone);
   if (!localParts) {
@@ -228,12 +271,15 @@ async function loadDisplayDays({ locationId, windowDays, timeZone }) {
     endDateEpoch: endEpoch,
     sort: 'asc',
     maxDaysForward: 16,
+    model,
+    elevationKey,
   });
 
   const days = aggregateDailyOverview(docs, timeZone);
   return { days: Array.isArray(days) ? days : [] };
 }
 
+// Resolve Precip Type.
 function resolvePrecipType(day) {
   const snow = Number(day?.snowTotal ?? 0);
   const precip = Number(day?.precipTotal ?? 0);
@@ -243,6 +289,7 @@ function resolvePrecipType(day) {
   return 'Rain';
 }
 
+// Resolve Cloud Label.
 function resolveCloudLabel(day) {
   const cover = Number(day?.avgCloudCover ?? 0);
   if (!Number.isFinite(cover)) return 'Clear';
@@ -253,6 +300,7 @@ function resolveCloudLabel(day) {
 
 const EMAIL_ASSET_CACHE = new Map();
 
+// Get Email Asset Data Url.
 function getEmailAssetDataUrl(cacheKey, assetPath) {
   if (!assetPath) return '';
   if (EMAIL_ASSET_CACHE.has(cacheKey)) {
@@ -268,17 +316,20 @@ function getEmailAssetDataUrl(cacheKey, assetPath) {
   return dataUrl;
 }
 
+// Get Email Icon Data Url.
 function getEmailIconDataUrl(filename) {
   if (!filename) return '';
   const iconPath = path.join(__dirname, '..', 'public', 'email-icons', filename);
   return getEmailAssetDataUrl(`icon:${filename}`, iconPath);
 }
 
+// Get Email Logo Data Url.
 function getEmailLogoDataUrl() {
   const logoPath = path.join(__dirname, '..', '..', 'frontend', 'public', 'snowcast.png');
   return getEmailAssetDataUrl('logo', logoPath);
 }
 
+// Resolve Email Icon Url.
 function resolveEmailIconUrl({ precipType, cloudCover, iconBase }) {
   const type = (precipType || '').toLowerCase();
   if (type === 'snow') return iconBase ? `${iconBase}/snow.png` : getEmailIconDataUrl('snow.png');
@@ -291,27 +342,32 @@ function resolveEmailIconUrl({ precipType, cloudCover, iconBase }) {
   return iconBase ? `${iconBase}/clearday.png` : getEmailIconDataUrl('clearday.png');
 }
 
+// Format Temp Value.
 function formatTempValue(value) {
   if (value == null || Number.isNaN(value)) return '--';
   return `${Math.round(value)}°F`;
 }
 
+// Format Snow Inches.
 function formatSnowInches(value) {
   if (value == null || Number.isNaN(value)) return '--';
   return `${Number(value).toFixed(1)} in`;
 }
 
+// Format Precip Value.
 function formatPrecipValue(value) {
   if (value == null || Number.isNaN(value)) return '--';
   return `${Number(value).toFixed(2)}`;
 }
 
+// Format Wind Mph.
 function formatWindMph(value) {
   if (value == null || Number.isNaN(value)) return '--';
   const mph = Number(value) * 0.621371;
   return `${mph.toFixed(1)} mph`;
 }
 
+// parse Date Key helper.
 function parseDateKey(dateKey) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey || '');
   if (!match) return null;
@@ -322,6 +378,7 @@ function parseDateKey(dateKey) {
   };
 }
 
+// Format Day Label.
 function formatDayLabel(dateKey, timeZone = 'UTC') {
   if (!dateKey) return '';
   const parts = parseDateKey(dateKey);
@@ -333,8 +390,10 @@ function formatDayLabel(dateKey, timeZone = 'UTC') {
   return weekday ? `${weekday} ${dateKey}` : dateKey;
 }
 
+// Build Weeks.
 function buildWeeks({ days, timeZone }) {
   if (!days.length) return [];
+  // day Map helper.
   const dayMap = new Map(days.map((day) => [day.date, day]));
   const firstKey = days[0].date;
   const lastKey = days[days.length - 1].date;
@@ -367,13 +426,15 @@ function buildWeeks({ days, timeZone }) {
   return weeks;
 }
 
-function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
+// Build Alert Email Html.
+function buildAlertEmailHtml({ location, windowDays, thresholdIn, model, elevationKey, days }) {
   const logoBase = config.email.imageBaseUrl || config.backend.url || config.frontend.url || '';
   const embedImages = config.email.embedImages;
   const iconBase = embedImages ? '' : (logoBase ? `${logoBase.replace(/\/$/, '')}/email-icons` : '');
   const logoUrl = embedImages
     ? getEmailLogoDataUrl()
     : (logoBase ? `${logoBase.replace(/\/$/, '')}/snowcast.png` : '');
+  // list Rows helper.
   const listRows = days.map((day) => {
     const precipType = resolvePrecipType(day);
     const snowAmount = Number(day?.snowTotal ?? 0);
@@ -445,7 +506,7 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
           </tr>
         </table>
         <div style="margin-top:12px;font-size:13px;color:#1b263b;">
-          Window: next ${windowDays} days · Threshold: ${thresholdIn} in
+          Window: next ${windowDays} days · Threshold: ${thresholdIn} in · Model: ${String(model || DEFAULT_MODEL).toUpperCase()} · Elevation: ${elevationKey || DEFAULT_ELEVATION}
         </div>
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px;border-collapse:collapse;width:100%;">
           <tbody>
@@ -457,26 +518,33 @@ function buildAlertEmailHtml({ location, windowDays, thresholdIn, days }) {
   `;
 }
 
+// Handle List Alerts.
 async function handleListAlerts(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
     return response.status(403).send({ error: 'Forbidden' });
   }
   const alerts = await powAlertDb.find({ userId: user.id }).lean();
+  // location Ids helper.
   const locationIds = alerts.map((alert) => alert.locationId);
   const locations = await locationsDb.find({ _id: { $in: locationIds } }).lean();
+  // location Map helper.
   const locationMap = new Map(locations.map((loc) => [String(loc._id), loc]));
+  // payload helper.
   const payload = alerts.map((alert) => ({
     id: String(alert._id),
     locationId: String(alert.locationId),
     locationName: locationMap.get(String(alert.locationId))?.name || '',
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
+    model: alert.model || DEFAULT_MODEL,
+    elevation: alert.elevationKey || DEFAULT_ELEVATION,
     active: alert.active,
   }));
   return response.status(200).send(payload);
 }
 
+// Handle Create Alert.
 async function handleCreateAlert(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
@@ -504,6 +572,8 @@ async function handleCreateAlert(request, response) {
     locationId: payload.locationId,
     windowDays: normalizeWindowDays(payload.windowDays),
     thresholdIn: normalizeThreshold(payload.thresholdIn),
+    model: payload.model,
+    elevationKey: payload.elevationKey,
     active: payload.active,
   });
 
@@ -513,10 +583,13 @@ async function handleCreateAlert(request, response) {
     locationName: location.name,
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
+    model: alert.model || DEFAULT_MODEL,
+    elevation: alert.elevationKey || DEFAULT_ELEVATION,
     active: alert.active,
   });
 }
 
+// Handle Update Alert.
 async function handleUpdateAlert(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
@@ -530,6 +603,21 @@ async function handleUpdateAlert(request, response) {
   const alert = await powAlertDb.findOne({ _id: alertId, userId: user.id });
   if (!alert) {
     return response.status(404).send({ error: 'Alert not found' });
+  }
+  if (Object.prototype.hasOwnProperty.call(request.body || {}, 'model')) {
+    const nextModel = normalizeModel(request.body?.model);
+    if (!nextModel) {
+      return response.status(400).send({ error: 'Invalid model' });
+    }
+    alert.model = nextModel;
+  }
+  if (Object.prototype.hasOwnProperty.call(request.body || {}, 'elevation')
+      || Object.prototype.hasOwnProperty.call(request.body || {}, 'elevationKey')) {
+    const nextElevation = normalizeElevation(request.body?.elevation || request.body?.elevationKey);
+    if (!nextElevation) {
+      return response.status(400).send({ error: 'Invalid elevation' });
+    }
+    alert.elevationKey = nextElevation;
   }
   if (payload.locationId && mongoose.Types.ObjectId.isValid(payload.locationId)) {
     alert.locationId = payload.locationId;
@@ -546,10 +634,13 @@ async function handleUpdateAlert(request, response) {
     locationName: location?.name || '',
     windowDays: alert.windowDays,
     thresholdIn: alert.thresholdIn,
+    model: alert.model || DEFAULT_MODEL,
+    elevation: alert.elevationKey || DEFAULT_ELEVATION,
     active: alert.active,
   });
 }
 
+// Handle Delete Alert.
 async function handleDeleteAlert(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
@@ -563,6 +654,7 @@ async function handleDeleteAlert(request, response) {
   return response.status(200).send({ ok: true });
 }
 
+// Handle Check Alerts.
 async function handleCheckAlerts(request, response) {
   const user = await getFrontendUserFromRequest(request);
   if (!user) {
@@ -605,6 +697,7 @@ async function handleCheckAlerts(request, response) {
   return response.status(200).send({ results });
 }
 
+// check All Alerts helper.
 async function checkAllAlerts() {
   const alerts = await powAlertDb.find({ active: true });
   for (const alert of alerts) {

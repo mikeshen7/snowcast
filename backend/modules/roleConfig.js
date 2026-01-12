@@ -1,3 +1,4 @@
+// role Config module.
 'use strict';
 
 const rolesDb = require('../models/rolesDb');
@@ -47,6 +48,7 @@ const DEFAULT_ROLE_FORECAST = {
 const ROLE_ORDER = ['guest', 'free', 'premium', 'admin'];
 let roleCache = null;
 
+// Normalize Role.
 function normalizeRole(role) {
   if (role === 'basic' || role === 'level1') return 'free';
   if (role === 'standard' || role === 'level2' || role === 'advanced' || role === 'level3') return 'premium';
@@ -54,6 +56,7 @@ function normalizeRole(role) {
   return role;
 }
 
+// Build Default Role Map.
 function buildDefaultRoleMap() {
   return {
     guest: {
@@ -99,11 +102,13 @@ function buildDefaultRoleMap() {
   };
 }
 
+// coerce Number helper.
 function coerceNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+// Build Role Map From Docs.
 function buildRoleMapFromDocs(docs) {
   const map = buildDefaultRoleMap();
   (docs || []).forEach((doc) => {
@@ -121,6 +126,7 @@ function buildRoleMapFromDocs(docs) {
   return map;
 }
 
+// Ensure Role Defaults.
 async function ensureRoleDefaults() {
   const defaults = buildDefaultRoleMap();
   for (const role of ROLE_ORDER) {
@@ -144,12 +150,14 @@ async function ensureRoleDefaults() {
   }
 }
 
+// Refresh Role Cache.
 async function refreshRoleCache() {
   const docs = await rolesDb.find({}).lean();
   roleCache = buildRoleMapFromDocs(docs);
   return roleCache;
 }
 
+// Get Role Map.
 function getRoleMap() {
   if (!roleCache) {
     roleCache = buildDefaultRoleMap();
@@ -157,11 +165,13 @@ function getRoleMap() {
   return roleCache;
 }
 
+// Get Roles List.
 function getRolesList() {
   const map = getRoleMap();
   return ROLE_ORDER.map((code) => map[code]);
 }
 
+// Get Role Labels.
 function getRoleLabels() {
   const map = getRoleMap();
   return {
@@ -172,6 +182,7 @@ function getRoleLabels() {
   };
 }
 
+// Get Favorite Limits.
 function getFavoriteLimits() {
   const map = getRoleMap();
   return {
@@ -182,6 +193,7 @@ function getFavoriteLimits() {
   };
 }
 
+// Get Favorite Limit For Role.
 function getFavoriteLimitForRole(role) {
   const normalized = normalizeRole(role || 'guest');
   const limits = getFavoriteLimits();
@@ -189,6 +201,7 @@ function getFavoriteLimitForRole(role) {
   return Number.isFinite(value) ? value : DEFAULT_ROLE_FAVORITES[normalized] ?? 0;
 }
 
+// Get Hourly Access.
 function getHourlyAccess() {
   const map = getRoleMap();
   return {
@@ -199,12 +212,14 @@ function getHourlyAccess() {
   };
 }
 
+// Check can Access Hourly.
 function canAccessHourly(role) {
   const normalized = normalizeRole(role || 'guest');
   const map = getHourlyAccess();
   return Boolean(map[normalized]);
 }
 
+// Get Pow Alert Limits.
 function getPowAlertLimits() {
   const map = getRoleMap();
   return {
@@ -215,6 +230,7 @@ function getPowAlertLimits() {
   };
 }
 
+// Get Pow Alert Limit For Role.
 function getPowAlertLimitForRole(role) {
   const normalized = normalizeRole(role || 'free');
   const limits = getPowAlertLimits();
@@ -222,6 +238,7 @@ function getPowAlertLimitForRole(role) {
   return Number.isFinite(value) ? value : DEFAULT_ROLE_POW_ALERTS[normalized] ?? 0;
 }
 
+// Get Check Pow Access.
 function getCheckPowAccess() {
   const map = getRoleMap();
   return {
@@ -232,12 +249,14 @@ function getCheckPowAccess() {
   };
 }
 
+// Check can Check Pow.
 function canCheckPow(role) {
   const normalized = normalizeRole(role || 'free');
   const map = getCheckPowAccess();
   return Boolean(map[normalized]);
 }
 
+// Get Forecast Windows.
 function getForecastWindows() {
   const map = getRoleMap();
   return {
@@ -248,6 +267,7 @@ function getForecastWindows() {
   };
 }
 
+// Get Forecast Window For Role.
 function getForecastWindowForRole(role) {
   const normalized = normalizeRole(role || 'guest');
   const windows = getForecastWindows();

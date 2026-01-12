@@ -1,3 +1,4 @@
+// api Clients module.
 'use strict';
 
 const crypto = require('crypto');
@@ -7,6 +8,7 @@ const appConfig = require('./appConfig');
 const { config } = require('../config');
 const CLIENT_API_SESSION_SECRET = config.clientApi.sessionSecret;
 
+// hash Key helper.
 function hashKey(rawKey) {
   if (!CLIENT_API_SESSION_SECRET) {
     throw new Error('CLIENT_API_SESSION_SECRET is not configured');
@@ -17,10 +19,12 @@ function hashKey(rawKey) {
     .digest('hex');
 }
 
+// generate Api Key helper.
 function generateApiKey() {
   return crypto.randomBytes(24).toString('base64url');
 }
 
+// Create Client.
 async function createClient({ name, contactEmail, plan, rateLimitPerMin, dailyQuota, metadata }) {
   const configValues = appConfig.values();
   const resolvedRateLimit = Number.isFinite(Number(rateLimitPerMin))
@@ -44,18 +48,22 @@ async function createClient({ name, contactEmail, plan, rateLimitPerMin, dailyQu
   return { client: doc.toObject(), apiKey: rawKey };
 }
 
+// revoke Client helper.
 async function revokeClient(clientId) {
   return apiClientDb.findByIdAndUpdate(clientId, { status: 'revoked' }, { new: true });
 }
 
+// activate Client helper.
 async function activateClient(clientId) {
   return apiClientDb.findByIdAndUpdate(clientId, { status: 'active' }, { new: true });
 }
 
+// Update Client Fields.
 async function updateClientFields(clientId, updates = {}) {
   return apiClientDb.findByIdAndUpdate(clientId, updates, { new: true });
 }
 
+// regenerate Api Key helper.
 async function regenerateApiKey(clientId) {
   const rawKey = generateApiKey();
   const keyHash = hashKey(rawKey);
@@ -67,10 +75,12 @@ async function regenerateApiKey(clientId) {
   return { client: doc, apiKey: rawKey };
 }
 
+// Remove Client.
 async function deleteClient(clientId) {
   return apiClientDb.findByIdAndDelete(clientId);
 }
 
+// find Active Client By Key helper.
 async function findActiveClientByKey(rawKey) {
   const keyHash = hashKey(rawKey);
   return apiClientDb.findOne({ keyHash, status: 'active' });

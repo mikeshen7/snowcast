@@ -1,8 +1,10 @@
+// email module.
 'use strict';
 
 const axios = require('axios');
 const { config } = require('../config');
 
+// send Email helper.
 async function sendEmail({ to, subject, text, html, from }) {
   const sender = from || config.email.from;
   if (!sender) {
@@ -19,6 +21,7 @@ async function sendEmail({ to, subject, text, html, from }) {
   return sendViaBrevo({ to, subject, text, html, from: sender, apiKey, endpointUrl });
 }
 
+// send Via Brevo helper.
 async function sendViaBrevo({ to, from, subject, text, html, apiKey, endpointUrl }) {
   const payload = {
     sender: { email: from },

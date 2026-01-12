@@ -1,3 +1,4 @@
+// weather Shared module.
 'use strict';
 
 const hourlyWeatherDb = require('../models/hourlyWeatherDb');
@@ -10,6 +11,110 @@ const {
   shiftLocalDate,
 } = require('./timezone');
 
+const FORECAST_MODELS = ['gfs', 'ecmwf', 'hrrr'];
+const AUTO_MODEL = 'auto';
+const BLEND_MODEL = 'blend';
+const DEFAULT_MODEL = BLEND_MODEL;
+const DEFAULT_ELEVATION = 'mid';
+const ELEVATION_KEYS = ['base', 'mid', 'top'];
+
+// Normalize Forecast Model.
+function normalizeForecastModel(input) {
+  const value = String(input || '').toLowerCase().trim();
+  if (!value) return '';
+  if (value === BLEND_MODEL) return BLEND_MODEL;
+  return FORECAST_MODELS.includes(value) ? value : '';
+}
+
+// Normalize Elevation Key.
+function normalizeElevationKey(input) {
+  const value = String(input || '').toLowerCase().trim();
+  return ELEVATION_KEYS.includes(value) ? value : '';
+}
+
+// average Values helper.
+function averageValues(values) {
+  if (!values.length) return null;
+  // sum helper.
+  const sum = values.reduce((total, value) => total + value, 0);
+  return sum / values.length;
+}
+
+// Resolve Precip Type.
+function resolvePrecipType(precip, snow) {
+  if (!Number.isFinite(precip) || precip <= 0) return [];
+  if (!Number.isFinite(snow) || snow <= 0) return ['rain'];
+  if (precip > snow) return ['mixed'];
+  return ['snow'];
+}
+
+// select Representative Doc helper.
+function selectRepresentativeDoc(docs) {
+  if (!docs.length) return null;
+  // priority helper.
+  const priority = new Map(FORECAST_MODELS.map((model, index) => [model, index]));
+  // sorted helper.
+  const sorted = [...docs].sort((a, b) => {
+    const aKey = a.model || 'auto';
+    const bKey = b.model || 'auto';
+    const aRank = priority.has(aKey) ? priority.get(aKey) : FORECAST_MODELS.length;
+    const bRank = priority.has(bKey) ? priority.get(bKey) : FORECAST_MODELS.length;
+    return aRank - bRank;
+  });
+  return sorted[0];
+}
+
+// blend Hourly Docs helper.
+function blendHourlyDocs(docs) {
+  const grouped = new Map();
+  for (const doc of docs || []) {
+    if (doc.dateTimeEpoch == null) continue;
+    const key = doc.dateTimeEpoch;
+    if (!grouped.has(key)) grouped.set(key, new Map());
+    const modelKey = doc.model || 'auto';
+    if (!grouped.get(key).has(modelKey)) {
+      grouped.get(key).set(modelKey, doc);
+    }
+  }
+
+  const blended = [];
+  for (const [epoch, modelMap] of grouped.entries()) {
+    const modelDocs = Array.from(modelMap.values());
+    const base = selectRepresentativeDoc(modelDocs);
+    if (!base) continue;
+    const numericFields = [
+      'precipProb',
+      'precip',
+      'snow',
+      'rain',
+      'windspeed',
+      'cloudCover',
+      'visibility',
+      'freezingLevelFt',
+      'snowDepthIn',
+      'temp',
+      'feelsLike',
+    ];
+    const averaged = {};
+    numericFields.forEach((field) => {
+      const values = modelDocs
+        .map((doc) => doc[field])
+        .filter((value) => Number.isFinite(value));
+      averaged[field] = averageValues(values);
+    });
+    const precipType = resolvePrecipType(averaged.precip, averaged.snow);
+    blended.push({
+      ...base,
+      ...averaged,
+      precipType,
+      model: BLEND_MODEL,
+      key: `${base.locationId || base.resort}-${BLEND_MODEL}-${base.elevationKey || DEFAULT_ELEVATION}-${epoch}`,
+    });
+  }
+
+  return blended.sort((a, b) => a.dateTimeEpoch - b.dateTimeEpoch);
+}
+
 // sanitizeDoc converts a Mongo doc into the API-safe payload shape.
 function sanitizeDoc(doc) {
   return {
@@ -17,6 +122,9 @@ function sanitizeDoc(doc) {
     key: doc.key,
     resort: doc.resort,
     locationId: doc.locationId,
+    model: doc.model || 'auto',
+    elevationKey: doc.elevationKey || DEFAULT_ELEVATION,
+    elevationFt: doc.elevationFt ?? null,
     dateTimeEpoch: doc.dateTimeEpoch,
     dateTime: doc.dateTime,
     dayOfWeek: doc.dayOfWeek,
@@ -29,9 +137,12 @@ function sanitizeDoc(doc) {
     precipType: doc.precipType,
     precip: doc.precip,
     snow: doc.snow,
+    rain: doc.rain,
     windspeed: doc.windspeed,
     cloudCover: doc.cloudCover,
     visibility: doc.visibility,
+    freezingLevelFt: doc.freezingLevelFt,
+    snowDepthIn: doc.snowDepthIn,
     conditions: doc.conditions,
     icon: doc.icon,
     temp: doc.temp,
@@ -74,6 +185,9 @@ async function fetchLocationDetail(locationId) {
     lon: doc.lon,
     tz_iana: doc.tz_iana,
     isSkiResort: doc.isSkiResort,
+    baseElevationFt: doc.baseElevationFt ?? null,
+    midElevationFt: doc.midElevationFt ?? null,
+    topElevationFt: doc.topElevationFt ?? null,
   };
 }
 
@@ -88,6 +202,8 @@ async function queryHourlyDocs(options) {
     sort = 'asc',
     maxDaysBack,
     maxDaysForward,
+    model,
+    elevationKey,
   } = options;
   if (!locationId) {
     const error = new Error('locationId is required');
@@ -106,6 +222,8 @@ async function queryHourlyDocs(options) {
   const config = appConfig.values();
   const { MS_PER_DAY, WEATHER_API_MAX_DAYS_BACK, WEATHER_API_MAX_DAYS_FORWARD } = config;
   const filter = { locationId };
+  const resolvedModel = normalizeForecastModel(model) || DEFAULT_MODEL;
+  const resolvedElevation = normalizeElevationKey(elevationKey) || DEFAULT_ELEVATION;
 
   let effectiveStart;
   let effectiveEnd;
@@ -149,6 +267,32 @@ async function queryHourlyDocs(options) {
   if (dateFilter) {
     filter.dateTimeEpoch = dateFilter;
   }
+  if (resolvedElevation) {
+    if (resolvedElevation === DEFAULT_ELEVATION) {
+      filter.$or = [
+        { elevationKey: resolvedElevation },
+        { elevationKey: { $exists: false } },
+        { elevationKey: null },
+      ];
+    } else {
+      filter.elevationKey = resolvedElevation;
+    }
+  }
+  if (resolvedModel === BLEND_MODEL) {
+    const modelFilter = [
+      { model: { $in: [...FORECAST_MODELS, AUTO_MODEL] } },
+      { model: { $exists: false } },
+      { model: null },
+    ];
+    if (filter.$or) {
+      filter.$and = [{ $or: filter.$or }, { $or: modelFilter }];
+      delete filter.$or;
+    } else {
+      filter.$or = modelFilter;
+    }
+  } else if (resolvedModel) {
+    filter.model = resolvedModel;
+  }
 
   const sortDirection = sort === 'desc' ? -1 : 1;
   const docs = await hourlyWeatherDb
@@ -156,7 +300,11 @@ async function queryHourlyDocs(options) {
     .sort({ dateTimeEpoch: sortDirection })
     .lean();
 
-  return { docs, location };
+  let finalDocs = resolvedModel === BLEND_MODEL ? blendHourlyDocs(docs) : docs;
+  if (resolvedModel === BLEND_MODEL && sortDirection === -1) {
+    finalDocs = [...finalDocs].sort((a, b) => b.dateTimeEpoch - a.dateTimeEpoch);
+  }
+  return { docs: finalDocs, location };
 }
 
 // buildHourlyWeatherResponse wraps queryHourlyDocs with serialization.
@@ -173,6 +321,7 @@ async function buildHourlyWeatherResponse(options) {
 // haversineKm estimates distance between two lat/lon points in km.
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
+  // to Rad helper.
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);

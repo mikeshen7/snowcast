@@ -1,3 +1,4 @@
+// rate Limit module.
 'use strict';
 
 // Simple fixed-window IP rate limiter; supports dynamic limits via functions.
@@ -10,6 +11,7 @@ function createFixedWindowRateLimiter(options = {}) {
 
   const buckets = new Map();
 
+  // cleanup helper.
   function cleanup() {
     const now = Date.now();
     for (const [key, bucket] of buckets.entries()) {
@@ -19,6 +21,7 @@ function createFixedWindowRateLimiter(options = {}) {
     }
   }
 
+  // rate Limit Middleware helper.
   return function rateLimitMiddleware(req, res, next) {
     const resolvedWindowMs = typeof windowMs === 'function' ? Number(windowMs(req)) || 0 : windowMs;
     const resolvedMax = typeof max === 'function' ? Number(max(req)) || 0 : max;

@@ -1,3 +1,4 @@
+// usage Tracker module.
 'use strict';
 
 const apiUsageDb = require('../models/apiUsageDb');
@@ -9,15 +10,18 @@ const { config } = require('../config');
 const { sendEmail } = require('./email');
 const adminUserDb = require('../models/adminUserDb');
 
+// Get Window Start.
 function getWindowStart(date = new Date()) {
   const windowSizeMs = 60 * 1000;
   return new Date(Math.floor(date.getTime() / windowSizeMs) * windowSizeMs);
 }
 
+// Get Day Key.
 function getDayKey(date = new Date()) {
   return date.toISOString().slice(0, 10); // YYYY-MM-DD UTC
 }
 
+// Resolve Default Rate Limit.
 function resolveDefaultRateLimit() {
   const configValue = Number(appConfig.values().API_CLIENT_RATE_LIMIT_DEFAULT);
   if (Number.isFinite(configValue)) {
@@ -30,6 +34,7 @@ function resolveDefaultRateLimit() {
   return 60;
 }
 
+// Resolve Default Daily Quota.
 function resolveDefaultDailyQuota() {
   const configValue = Number(appConfig.values().API_CLIENT_DAILY_QUOTA_DEFAULT);
   if (Number.isFinite(configValue)) {
@@ -42,6 +47,7 @@ function resolveDefaultDailyQuota() {
   return 5000;
 }
 
+// track Usage helper.
 async function trackUsage(request, response, next) {
   try {
     if (request.skipUsageTracking) {
@@ -104,6 +110,7 @@ async function trackUsage(request, response, next) {
 
 module.exports = { trackUsage };
 
+// Log Client Access.
 async function logClientAccess(client, request) {
   const ipHeader = request.headers['x-forwarded-for'];
   const ip = Array.isArray(ipHeader)
@@ -141,9 +148,11 @@ async function logClientAccess(client, request) {
   await notifyAdminsOfSuspiciousAccess(client, distinctHosts);
 }
 
+// notify Admins Of Suspicious Access helper.
 async function notifyAdminsOfSuspiciousAccess(client, hosts) {
   try {
     const admins = await adminUserDb.find({ status: 'active', roles: { $in: ['admin'] } }).lean();
+    // recipients helper.
     const recipients = admins.map((u) => u.email).filter(Boolean);
     if (!recipients.length) return;
     const subject = `API key access anomaly for client ${client.name || client._id}`;

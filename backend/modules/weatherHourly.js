@@ -1,3 +1,4 @@
+// weather Hourly module.
 'use strict';
 
 const { buildHourlyWeatherResponse, findNearestLocation } = require('./weatherShared');
@@ -18,6 +19,8 @@ async function endpointHourlyWeather(request, response, next) {
       daysBack: request.query.daysBack,
       daysForward: request.query.daysForward,
       sort: request.query.sort,
+      model: request.query.model,
+      elevationKey: request.query.elevation,
       startDateEpoch,
       endDateEpoch,
     });
@@ -52,6 +55,8 @@ async function endpointHourlyWeatherByCoords(request, response, next) {
       daysBack: request.query.daysBack,
       daysForward: request.query.daysForward,
       sort: request.query.sort,
+      model: request.query.model,
+      elevationKey: request.query.elevation,
       startDateEpoch,
       endDateEpoch,
     });

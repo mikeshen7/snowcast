@@ -1,3 +1,4 @@
+// weather Daily module.
 'use strict';
 
 const { queryHourlyDocs, findNearestLocation } = require('./weatherShared');
@@ -20,6 +21,8 @@ async function endpointDailyOverview(request, response, next) {
       daysBack: request.query.daysBack,
       daysForward: request.query.daysForward,
       sort: request.query.sort,
+      model: request.query.model,
+      elevationKey: request.query.elevation,
       startDateEpoch,
       endDateEpoch,
       maxDaysBack: appConfig.values().WEATHER_API_MAX_DAYS_BACK,
@@ -57,6 +60,8 @@ async function endpointDailyOverviewByCoords(request, response, next) {
       daysBack: request.query.daysBack,
       daysForward: request.query.daysForward,
       sort: request.query.sort,
+      model: request.query.model,
+      elevationKey: request.query.elevation,
       startDateEpoch,
       endDateEpoch,
       maxDaysBack: appConfig.values().WEATHER_API_MAX_DAYS_BACK,
@@ -91,6 +96,8 @@ async function endpointDailySegments(request, response, next) {
       daysBack: request.query.daysBack,
       daysForward: request.query.daysForward,
       sort: request.query.sort,
+      model: request.query.model,
+      elevationKey: request.query.elevation,
       startDateEpoch,
       endDateEpoch,
     });
@@ -126,6 +133,8 @@ async function endpointDailySegmentsByCoords(request, response, next) {
       daysBack: request.query.daysBack,
       daysForward: request.query.daysForward,
       sort: request.query.sort,
+      model: request.query.model,
+      elevationKey: request.query.elevation,
       startDateEpoch,
       endDateEpoch,
     });

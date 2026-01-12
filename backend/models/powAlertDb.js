@@ -12,6 +12,8 @@ const powAlertSchema = new Schema(
     locationId: { type: Schema.Types.ObjectId, ref: 'locations', required: true },
     windowDays: { type: Number, default: 3, min: 1, max: 14 },
     thresholdIn: { type: Number, default: 3, min: 0 },
+    model: { type: String, default: 'blend' },
+    elevationKey: { type: String, default: 'mid' },
     active: { type: Boolean, default: true },
     lastNotifiedAt: { type: Date },
     lastNotifiedForDate: { type: String, default: '' }, // local YYYY-MM-DD of earliest trigger day

@@ -1,3 +1,4 @@
+// admin Auth module.
 'use strict';
 
 const crypto = require('crypto');
@@ -19,24 +20,29 @@ const FREE_ROLE = 'free';
 const PREMIUM_ROLE = 'premium';
 const ALLOWED_ROLES = new Set([ADMIN_ROLE, FREE_ROLE, PREMIUM_ROLE]);
 
+// Get Session Ttl Minutes.
 function getSessionTtlMinutes() {
   return Number(appConfig.values().TTL_BACKEND_SESSION_MINUTES) || 60;
 }
 
+// Get Magic Ttl Minutes.
 function getMagicTtlMinutes() {
   return Number(appConfig.values().TTL_AUTH_TOKEN_MINUTES) || 15;
 }
 
+// hash Token helper.
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+// safe Redirect Path helper.
 function safeRedirectPath(raw) {
   if (!raw || typeof raw !== 'string') return '/admin.html';
   if (raw.startsWith('/')) return raw;
   return '/admin.html';
 }
 
+// Build Magic Link.
 function buildMagicLink(token, redirectPath) {
   if (!BACKEND_URL) {
     throw new Error('BACKEND_URL not configured');
@@ -47,6 +53,7 @@ function buildMagicLink(token, redirectPath) {
   return url.toString();
 }
 
+// send Magic Link Email helper.
 async function sendMagicLinkEmail(email, link) {
   const expiresMinutes = getMagicTtlMinutes();
   const subject = 'Snowcast Admin Console login link';
@@ -60,11 +67,13 @@ async function sendMagicLinkEmail(email, link) {
   await sendEmail({ to: email, subject, text });
 }
 
+// Create Session Token.
 function createSessionToken(user) {
   if (!SESSION_SECRET) {
     throw new Error('ADMIN_SESSION_SECRET is not configured');
   }
   const sessionTtlMinutes = getSessionTtlMinutes();
+  // normalized Roles helper.
   const normalizedRoles = (user.roles || []).filter((r) => ALLOWED_ROLES.has(r)).slice(0, 1);
   return jwt.sign(
     { uid: String(user._id), email: user.email, roles: normalizedRoles },
@@ -73,6 +82,7 @@ function createSessionToken(user) {
   );
 }
 
+// verify Session Token helper.
 function verifySessionToken(token) {
   if (!SESSION_SECRET) return null;
   try {
@@ -82,6 +92,7 @@ function verifySessionToken(token) {
   }
 }
 
+// Handle Request Magic Link.
 async function handleRequestMagicLink(request, response) {
   if (!ADMIN_ENABLED) {
     return response.status(404).send('Not available');
@@ -142,6 +153,7 @@ async function handleRequestMagicLink(request, response) {
   return response.status(200).send({ ok: true });
 }
 
+// Handle Verify Magic Link.
 async function handleVerifyMagicLink(request, response) {
   if (!ADMIN_ENABLED) {
     return response.status(404).send('Not available');
@@ -190,6 +202,7 @@ async function handleVerifyMagicLink(request, response) {
   return response.redirect(redirect);
 }
 
+// require Admin Session helper.
 async function requireAdminSession(request, response, next) {
   if (!ADMIN_ENABLED) {
     return response.status(404).send('Not available');
@@ -203,6 +216,7 @@ async function requireAdminSession(request, response, next) {
   return next();
 }
 
+// require Role helper.
 function requireRole(allowedRoles) {
   const allowed = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
   return (request, response, next) => {
@@ -210,6 +224,7 @@ function requireRole(allowedRoles) {
       return response.status(403).send('Forbidden');
     }
     const roles = request.adminUser.roles || [];
+    // Check has Role.
     const hasRole = roles.some((r) => allowed.includes(r));
     if (!hasRole) {
       return response.status(403).send('Forbidden');
@@ -218,6 +233,7 @@ function requireRole(allowedRoles) {
   };
 }
 
+// Handle Session Status.
 async function handleSessionStatus(request, response) {
   if (!ADMIN_ENABLED) {
     return response.status(404).send('Not available');
@@ -237,11 +253,13 @@ async function handleSessionStatus(request, response) {
   });
 }
 
+// Handle Logout.
 function handleLogout(request, response) {
   response.clearCookie(COOKIE_NAME, { path: '/' });
   return response.status(200).send({ ok: true });
 }
 
+// Get Admin User From Request.
 async function getAdminUserFromRequest(request) {
   if (!ADMIN_ENABLED) {
     return null;
@@ -258,6 +276,7 @@ async function getAdminUserFromRequest(request) {
   if (!(user.roles || []).includes(ADMIN_ROLE)) {
     return null;
   }
+  // normalized Roles helper.
   const normalizedRoles = (user.roles || []).filter((r) => ALLOWED_ROLES.has(r)).slice(0, 1);
   const isAdmin = normalizedRoles.includes(ADMIN_ROLE);
   return {

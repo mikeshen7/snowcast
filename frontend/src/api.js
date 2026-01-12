@@ -60,10 +60,10 @@ export function getUserPreferences() {
   return apiFetch('/user/preferences');
 }
 
-export function updateUserPreferences({ favorites, homeResortId, units, name }) {
+export function updateUserPreferences({ favorites, homeResortId, units, name, forecastModel, forecastElevation }) {
   return apiFetch('/user/preferences', {
     method: 'PUT',
-    body: { favorites, homeResortId, units, name },
+    body: { favorites, homeResortId, units, name, forecastModel, forecastElevation },
   });
 }
 
@@ -71,17 +71,17 @@ export function listPowAlerts() {
   return apiFetch('/user/alerts');
 }
 
-export function createPowAlert({ locationId, windowDays, thresholdIn, active }) {
+export function createPowAlert({ locationId, windowDays, thresholdIn, active, model, elevation }) {
   return apiFetch('/user/alerts', {
     method: 'POST',
-    body: { locationId, windowDays, thresholdIn, active },
+    body: { locationId, windowDays, thresholdIn, active, model, elevation },
   });
 }
 
-export function updatePowAlert(id, { locationId, windowDays, thresholdIn, active }) {
+export function updatePowAlert(id, { locationId, windowDays, thresholdIn, active, model, elevation }) {
   return apiFetch(`/user/alerts/${id}`, {
     method: 'PUT',
-    body: { locationId, windowDays, thresholdIn, active },
+    body: { locationId, windowDays, thresholdIn, active, model, elevation },
   });
 }
 
@@ -123,20 +123,20 @@ export function getLocations({ query = '', isSkiResort = true, limit = 50 } = {}
   });
 }
 
-export function getDailyOverview({ locationId, startDateEpoch, endDateEpoch }) {
+export function getDailyOverview({ locationId, startDateEpoch, endDateEpoch, model, elevation }) {
   return apiFetch('/weather/daily/overview', {
-    params: { locationId, startDateEpoch, endDateEpoch },
+    params: { locationId, startDateEpoch, endDateEpoch, model, elevation },
   });
 }
 
-export function getDailySegments({ locationId, startDateEpoch, endDateEpoch }) {
+export function getDailySegments({ locationId, startDateEpoch, endDateEpoch, model, elevation }) {
   return apiFetch('/weather/daily/segments', {
-    params: { locationId, startDateEpoch, endDateEpoch },
+    params: { locationId, startDateEpoch, endDateEpoch, model, elevation },
   });
 }
 
-export function getHourly({ locationId, startDateEpoch, endDateEpoch }) {
+export function getHourly({ locationId, startDateEpoch, endDateEpoch, model, elevation }) {
   return apiFetch('/weather/hourly', {
-    params: { locationId, startDateEpoch, endDateEpoch },
+    params: { locationId, startDateEpoch, endDateEpoch, model, elevation },
   });
 }

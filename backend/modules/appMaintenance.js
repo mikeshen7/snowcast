@@ -1,12 +1,40 @@
+// app Maintenance module.
 'use strict';
 
 const hourlyWeatherDb = require('../models/hourlyWeatherDb');
 const weatherApi = require('./weatherApi');
 const appConfig = require('./appConfig');
 const roleConfig = require('./roleConfig');
+const forecastModels = require('./forecastModels');
 const { refreshLocationsCache, getCachedLocations } = require('./locations');
 const powAlerts = require('./powAlerts');
+const { logAdminEvent } = require('./adminLogs');
 
+// Log Backfill Shortfalls.
+function logBackfillShortfalls(location, results) {
+  (results || []).forEach((result) => {
+    if (result?.requestedDays == null || result?.actualDays == null) return;
+    if (result.actualDays >= result.requestedDays) return;
+    logAdminEvent({
+      type: 'backfill_info',
+      message: 'Backfill returned fewer days than requested',
+      meta: {
+        locationId: String(location._id),
+        name: location.name,
+        model: result.model,
+        elevationKey: result.elevationKey || 'mid',
+        requestedDays: result.requestedDays,
+        requestedStartDate: result.requestedStartDate,
+        requestedEndDate: result.requestedEndDate,
+        actualDays: result.actualDays,
+        actualStartDate: result.actualStartDate,
+        actualEndDate: result.actualEndDate,
+      },
+    });
+  });
+}
+
+// Format Date.
 function formatDate(date) {
   return date.toISOString().split('T')[0];
 }
@@ -28,18 +56,107 @@ async function fetchAllWeather(options = {}) {
     locationCount: locations?.length || 0,
     options: requestOptions,
   }));
-  for (const location of locations || []) {
-    try {
-      await weatherApi.fetchLocation(location, requestOptions);
-    } catch (err) {
-      console.log(JSON.stringify({
-        event: 'weather_fetch_error',
-        locationId: String(location._id),
-        name: location.name,
-        context,
-        error: err.message,
-      }));
+  if (context === 'backfill') {
+    for (const location of locations || []) {
+      for (const elevation of weatherApi.listLocationElevations(location)) {
+        try {
+          const results = await weatherApi.fetchLocationModels(location, {
+            ...requestOptions,
+            elevationKey: elevation.key,
+            elevationFt: elevation.elevationFt,
+          });
+          logBackfillShortfalls(location, results);
+        } catch (err) {
+          logAdminEvent({
+            type: 'fetch_error',
+            message: err.message,
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              context,
+              elevationKey: elevation.key,
+              details: err?.meta,
+            },
+          });
+          console.log(JSON.stringify({
+            event: 'weather_fetch_error',
+            locationId: String(location._id),
+            name: location.name,
+            context,
+            elevationKey: elevation.key,
+            error: err.message,
+          }));
+        }
+      }
     }
+    return;
+  }
+
+  // models helper.
+  const models = forecastModels.listModels().filter((model) => model.enabled);
+  logAdminEvent({
+    type: 'fetch',
+    message: 'Forecast fetch started',
+    meta: {
+      context,
+      locationCount: locations?.length || 0,
+      models: models.map((model) => model.code),
+    },
+  });
+  for (const model of models) {
+    const shouldFetch = forecastModels.shouldFetchModel(model.code);
+    if (!shouldFetch) {
+      continue;
+    }
+    let successCount = 0;
+    for (const location of locations || []) {
+      for (const elevation of weatherApi.listLocationElevations(location)) {
+        try {
+          await weatherApi.fetchLocation(location, {
+            ...requestOptions,
+            model: model.code,
+            elevationKey: elevation.key,
+            elevationFt: elevation.elevationFt,
+          });
+          successCount += 1;
+        } catch (err) {
+          logAdminEvent({
+            type: 'fetch_error',
+            message: err.message,
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              context,
+              model: model.code,
+              elevationKey: elevation.key,
+              details: err?.meta,
+            },
+          });
+          console.log(JSON.stringify({
+            event: 'weather_fetch_error',
+            locationId: String(location._id),
+            name: location.name,
+            context,
+            model: model.code,
+            elevationKey: elevation.key,
+            error: err.message,
+          }));
+        }
+      }
+    }
+    if (successCount > 0) {
+      await forecastModels.markModelFetched(model.code);
+    }
+    logAdminEvent({
+      type: 'fetch',
+      message: 'Forecast fetch completed',
+      meta: {
+        context,
+        model: model.code,
+        locationCount: locations?.length || 0,
+        successCount,
+      },
+    });
   }
 }
 
@@ -61,6 +178,7 @@ async function backfillAllWeather(daysBack = appConfig.values().DB_BACKFILL_DAYS
   }
 }
 
+// backfill Locations helper.
 async function backfillLocations({ locationIds = [] } = {}) {
   const config = appConfig.values();
   const endDate = formatDate(new Date());
@@ -69,7 +187,9 @@ async function backfillLocations({ locationIds = [] } = {}) {
   if (!locations || locations.length === 0) {
     locations = await refreshLocationsCache();
   }
+  // wanted helper.
   const wanted = new Set((locationIds || []).map((id) => String(id)));
+  // selected helper.
   const selected = (locations || []).filter((loc) => wanted.has(String(loc._id)));
   console.log(JSON.stringify({
     event: 'weather_backfill_manual',
@@ -78,17 +198,121 @@ async function backfillLocations({ locationIds = [] } = {}) {
     endDate,
   }));
   for (const location of selected) {
-    try {
-      await weatherApi.fetchLocation(location, { startDate, endDate, context: 'backfill' });
-    } catch (err) {
-      console.log(JSON.stringify({
-        event: 'weather_backfill_error',
-        locationId: String(location._id),
-        name: location.name,
-        error: err.message,
-      }));
+    for (const elevation of weatherApi.listLocationElevations(location)) {
+      try {
+        const results = await weatherApi.fetchLocationModels(location, {
+          startDate,
+          endDate,
+          context: 'backfill',
+          elevationKey: elevation.key,
+          elevationFt: elevation.elevationFt,
+        });
+        logBackfillShortfalls(location, results);
+      } catch (err) {
+        logAdminEvent({
+          type: 'backfill_error',
+          message: err.message,
+          meta: {
+            locationId: String(location._id),
+            name: location.name,
+            elevationKey: elevation.key,
+            details: err?.meta,
+          },
+        });
+        console.log(JSON.stringify({
+          event: 'weather_backfill_error',
+          locationId: String(location._id),
+          name: location.name,
+          elevationKey: elevation.key,
+          error: err.message,
+        }));
+      }
     }
   }
+  return { count: selected.length };
+}
+
+// Fetch Forecast Locations.
+async function fetchForecastLocations({ locationIds = [], force = false } = {}) {
+  let locations = getCachedLocations();
+  if (!locations || locations.length === 0) {
+    locations = await refreshLocationsCache();
+  }
+  // wanted helper.
+  const wanted = new Set((locationIds || []).map((id) => String(id)));
+  // selected helper.
+  const selected = (locations || []).filter((loc) => wanted.has(String(loc._id)));
+  if (!selected.length) {
+    return { count: 0 };
+  }
+
+  // models helper.
+  const models = forecastModels.listModels().filter((model) => model.enabled);
+  logAdminEvent({
+    type: 'fetch',
+    message: 'Manual forecast fetch started',
+    meta: {
+      context: 'manual_fetch',
+      locationCount: selected.length,
+      models: models.map((model) => model.code),
+    },
+  });
+  for (const model of models) {
+    if (!force && !forecastModels.shouldFetchModel(model.code)) {
+      continue;
+    }
+    let successCount = 0;
+    for (const location of selected) {
+      for (const elevation of weatherApi.listLocationElevations(location)) {
+        try {
+          await weatherApi.fetchLocation(location, {
+            forecastDays: 16,
+            context: 'forecast',
+            model: model.code,
+            elevationKey: elevation.key,
+            elevationFt: elevation.elevationFt,
+          });
+          successCount += 1;
+        } catch (err) {
+          logAdminEvent({
+            type: 'fetch_error',
+            message: err.message,
+            meta: {
+              locationId: String(location._id),
+              name: location.name,
+              context: 'forecast',
+              model: model.code,
+              elevationKey: elevation.key,
+              details: err?.meta,
+            },
+          });
+          console.log(JSON.stringify({
+            event: 'weather_fetch_error',
+            locationId: String(location._id),
+            name: location.name,
+            context: 'forecast',
+            model: model.code,
+            elevationKey: elevation.key,
+            error: err.message,
+          }));
+        }
+      }
+    }
+    if (successCount > 0) {
+      await forecastModels.markModelFetched(model.code);
+    }
+    logAdminEvent({
+      type: 'fetch',
+      message: 'Manual forecast fetch completed',
+      meta: {
+        context: 'manual_fetch',
+        model: model.code,
+        locationCount: selected.length,
+        successCount,
+      },
+    });
+  }
+
   return { count: selected.length };
 }
 
@@ -99,6 +323,7 @@ async function removeOrphanHourlyWeather() {
     if (!locations || locations.length === 0) {
       locations = await refreshLocationsCache();
     }
+    // location Ids helper.
     const locationIds = (locations || []).map((r) => String(r._id));
     if (locationIds.length === 0) return;
 
@@ -143,6 +368,7 @@ function startMaintenance() {
   setInterval(() => backfillAllWeather(config.DB_BACKFILL_DAYS), config.DB_BACKFILL_INTERVAL_HOURS * hourMs);
   setInterval(appConfig.refreshConfigCache, config.CONFIG_REFRESH_INTERVAL_HOURS * hourMs);
   setInterval(roleConfig.refreshRoleCache, config.CONFIG_REFRESH_INTERVAL_HOURS * hourMs);
+  setInterval(forecastModels.refreshModelCache, config.CONFIG_REFRESH_INTERVAL_HOURS * hourMs);
   setInterval(() => {
     powAlerts.checkAllAlerts().catch((err) => {
       console.error('*** pow alert schedule error:', err.message);
@@ -154,6 +380,7 @@ module.exports = {
   fetchAllWeather,
   backfillAllWeather,
   backfillLocations,
+  fetchForecastLocations,
   removeOrphanHourlyWeather,
   removeOldHourlyWeather,
   startMaintenance,

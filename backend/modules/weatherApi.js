@@ -1,13 +1,25 @@
+// weather Api module.
 'use strict';
 
 const axios = require('axios');
 const { URLSearchParams } = require('url');
 const hourlyWeatherDb = require('../models/hourlyWeatherDb');
+const forecastModels = require('./forecastModels');
 const {
   localDateTimeStringToUtcEpoch,
   getLocalPartsFromUtc,
 } = require('./timezone');
 const BASE_URL = 'https://api.open-meteo.com/v1/forecast';
+const FORECAST_MODELS = ['gfs', 'ecmwf', 'hrrr'];
+const MODEL_PARAM_MAP = {
+  gfs: 'gfs_seamless',
+  ecmwf: 'ecmwf_ifs',
+  hrrr: 'gfs_hrrr',
+};
+const DEFAULT_ELEVATION_KEY = 'mid';
+const ELEVATION_KEYS = ['base', 'mid', 'top'];
+const FEET_TO_METERS = 0.3048;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const HOURLY_FIELDS = [
   'temperature_2m',
   'apparent_temperature',
@@ -17,7 +29,9 @@ const HOURLY_FIELDS = [
   'windspeed_10m',
   'cloudcover',
   'visibility',
-  'weathercode'
+  'weathercode',
+  'freezing_level_height',
+  'snow_depth'
 ].join(',');
 
 // ******************* Constants *******************
@@ -56,9 +70,42 @@ function mapWeatherCode(code) {
   return table[code] || { conditions: 'Unknown', icon: 'cloudy' };
 }
 
-const toF = (c) => (c == null ? null : (c * 9) / 5 + 32);
-const mmToIn = (mm) => (mm == null ? null : mm / 25.4);
+// cm To In helper.
 const cmToIn = (cm) => (cm == null ? null : cm / 2.54);
+
+// Normalize Elevation Key.
+function normalizeElevationKey(value) {
+  const key = String(value || '').toLowerCase().trim();
+  return ELEVATION_KEYS.includes(key) ? key : '';
+}
+
+// Resolve Elevation Ft.
+function resolveElevationFt(location, elevationKey) {
+  const key = normalizeElevationKey(elevationKey) || DEFAULT_ELEVATION_KEY;
+  if (!location) return null;
+  const map = {
+    base: location.baseElevationFt,
+    mid: location.midElevationFt,
+    top: location.topElevationFt,
+  };
+  const elevationFt = map[key];
+  return Number.isFinite(elevationFt) ? elevationFt : null;
+}
+
+// list Location Elevations helper.
+function listLocationElevations(location) {
+  if (!location) {
+    return [{ key: DEFAULT_ELEVATION_KEY, elevationFt: null }];
+  }
+  // entries helper.
+  const entries = ELEVATION_KEYS.map((key) => ({
+    key,
+    elevationFt: resolveElevationFt(location, key),
+  }));
+  // valid helper.
+  const valid = entries.filter((entry) => Number.isFinite(entry.elevationFt));
+  return valid.length ? valid : [{ key: DEFAULT_ELEVATION_KEY, elevationFt: resolveElevationFt(location, DEFAULT_ELEVATION_KEY) }];
+}
 
 // ******************* Weather API fetch *******************
 // buildForecastUrl constructs the Open-Meteo request for a location and window.
@@ -68,7 +115,21 @@ function buildForecastUrl(location, options = {}) {
     longitude: location.lon,
     hourly: HOURLY_FIELDS,
     timezone: 'auto',
+    temperature_unit: 'fahrenheit',
+    windspeed_unit: 'mph',
+    precipitation_unit: 'inch',
   });
+  if (options.model) {
+    const rawModel = String(options.model).trim();
+    const mapped = forecastModels.getModelApiParam(rawModel) || MODEL_PARAM_MAP[rawModel] || rawModel;
+    params.set('models', mapped);
+  }
+  const elevationFt = Number.isFinite(options.elevationFt)
+    ? Number(options.elevationFt)
+    : resolveElevationFt(location, options.elevationKey);
+  if (Number.isFinite(elevationFt)) {
+    params.set('elevation', Math.round(elevationFt * FEET_TO_METERS));
+  }
 
   if (options.startDate) {
     params.set('start_date', options.startDate);
@@ -80,17 +141,69 @@ function buildForecastUrl(location, options = {}) {
     params.set('past_days', options.pastDays);
   }
   if (options.forecastDays) {
-    params.set('forecast_days', options.forecastDays);
+    let forecastDays = Number(options.forecastDays);
+    const maxDays = forecastModels.getMaxForecastDays(options.model);
+    if (Number.isFinite(maxDays)) {
+      forecastDays = Math.min(forecastDays, maxDays);
+    }
+    if (Number.isFinite(forecastDays)) {
+      params.set('forecast_days', forecastDays);
+    }
   }
 
   return `${BASE_URL}?${params.toString()}`;
 }
 
+// date String To Utc Ms helper.
+function dateStringToUtcMs(value) {
+  if (!value) return null;
+  const dateOnly = String(value).split('T')[0];
+  const dt = new Date(`${dateOnly}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.getTime();
+}
+
+// Compute Requested Days.
+function computeRequestedDays(options) {
+  if (options.startDate && options.endDate) {
+    const startMs = dateStringToUtcMs(options.startDate);
+    const endMs = dateStringToUtcMs(options.endDate);
+    if (startMs != null && endMs != null && endMs >= startMs) {
+      return Math.floor((endMs - startMs) / MS_PER_DAY) + 1;
+    }
+  }
+  return null;
+}
+
+// summarize Returned Days helper.
+function summarizeReturnedDays(data) {
+  const times = data?.hourly?.time;
+  if (!Array.isArray(times) || times.length === 0) {
+    return { actualDays: 0, actualStartDate: null, actualEndDate: null };
+  }
+  const daySet = new Set();
+  times.forEach((value) => {
+    const datePart = String(value || '').split('T')[0];
+    if (datePart) daySet.add(datePart);
+  });
+  const ordered = Array.from(daySet).sort();
+  return {
+    actualDays: ordered.length,
+    actualStartDate: ordered[0] || null,
+    actualEndDate: ordered[ordered.length - 1] || null,
+  };
+}
+
 // fetchLocation retrieves weather for a location with retries/timeouts and upserts it.
 async function fetchLocation(location, options = {}) {
   const { context = 'forecast', ...queryOptions } = options;
+  const model = queryOptions.model ? String(queryOptions.model).trim() : '';
+  const elevationKey = normalizeElevationKey(queryOptions.elevationKey) || DEFAULT_ELEVATION_KEY;
+  const elevationFt = Number.isFinite(queryOptions.elevationFt)
+    ? Number(queryOptions.elevationFt)
+    : resolveElevationFt(location, elevationKey);
   const { name } = location;
-  const url = buildForecastUrl(location, queryOptions);
+  const url = buildForecastUrl(location, { ...queryOptions, elevationKey, elevationFt });
 
   const maxAttempts = 3;
   const baseDelayMs = 2000;
@@ -99,9 +212,32 @@ async function fetchLocation(location, options = {}) {
     try {
       const response = await axios.get(url, { timeout: 10000 });
       const { data } = response;
-      await upsertWeatherDocs(location, name, data);
-      return;
+      await upsertWeatherDocs(location, name, data, model, elevationKey, elevationFt);
+      const { actualDays, actualStartDate, actualEndDate } = summarizeReturnedDays(data);
+      const requestedDays = computeRequestedDays(queryOptions);
+      return {
+        model: model || 'auto',
+        elevationKey,
+        elevationFt,
+        requestedDays,
+        requestedStartDate: queryOptions.startDate || null,
+        requestedEndDate: queryOptions.endDate || null,
+        actualDays,
+        actualStartDate,
+        actualEndDate,
+      };
     } catch (error) {
+      const status = error?.response?.status;
+      const responseData = error?.response?.data;
+      error.meta = {
+        url,
+        model: model || 'auto',
+        elevationKey,
+        elevationFt,
+        status,
+        responseData,
+        context,
+      };
       lastError = error;
       const isLastAttempt = attempt === maxAttempts;
       const waitMs = baseDelayMs * attempt;
@@ -116,8 +252,27 @@ async function fetchLocation(location, options = {}) {
   }
 }
 
+// Fetch Location Models.
+async function fetchLocationModels(location, options = {}) {
+  const models = Array.isArray(options.models) && options.models.length
+    ? options.models
+    : options.model
+      ? [options.model]
+      : FORECAST_MODELS;
+  const results = [];
+  for (const model of models) {
+    const result = await fetchLocation(location, { ...options, model });
+    if (result) {
+      results.push(result);
+    }
+  }
+  return results;
+}
+
 // upsertWeatherDocs transforms the API payload into Mongo upsert operations.
-async function upsertWeatherDocs(location, name, data) {
+async function upsertWeatherDocs(location, name, data, model, elevationKey, elevationFt) {
+  const modelKey = model || 'auto';
+  const elevationLabel = normalizeElevationKey(elevationKey) || DEFAULT_ELEVATION_KEY;
   const timezone = location?.tz_iana || data?.timezone || 'UTC';
   const fallbackOffset = Number.isFinite(data?.utc_offset_seconds) ? data.utc_offset_seconds : 0;
   const times = data.hourly.time;
@@ -126,10 +281,12 @@ async function upsertWeatherDocs(location, name, data) {
   const precip = data.hourly.precipitation;
   const precipProb = data.hourly.precipitation_probability;
   const snowfall = data.hourly.snowfall;          // cm from Open-Meteo
-  const wind = data.hourly.windspeed_10m;         // km/h
+  const wind = data.hourly.windspeed_10m;         // mph
   const clouds = data.hourly.cloudcover;          // %
   const visibility = data.hourly.visibility;      // meters
   const weathercodes = data.hourly.weathercode;   // numeric codes
+  const freezingLevel = data.hourly.freezing_level_height; // meters
+  const snowDepth = data.hourly.snow_depth; // meters
 
   const docs = [];
   for (let i = 0; i < times.length; i++) {
@@ -140,11 +297,28 @@ async function upsertWeatherDocs(location, name, data) {
     const localParts = getLocalPartsFromUtc(epochMs, timezone);
     const dt = new Date(epochMs);
     const { conditions, icon } = mapWeatherCode(weathercodes[i]);
+    const precipIn = precip?.[i] ?? null;
+    const snowIn = cmToIn(snowfall?.[i]);
+    const rainIn = precipIn != null && snowIn != null
+      ? Math.max(0, precipIn - snowIn)
+      : precipIn != null
+        ? precipIn
+        : null;
+
+    const freezingLevelFt = freezingLevel?.[i] != null
+      ? freezingLevel[i] * 3.28084
+      : null;
+    const snowDepthIn = snowDepth?.[i] != null
+      ? snowDepth[i] * 39.3701
+      : null;
 
     docs.push({
-      key: `${location._id}-${epochMs}`,
+      key: `${location._id}-${modelKey}-${elevationLabel}-${epochMs}`,
       resort: name,
       locationId: String(location._id),
+      model: modelKey,
+      elevationKey: elevationLabel,
+      elevationFt: Number.isFinite(elevationFt) ? elevationFt : null,
       dateTimeEpoch: epochMs,
       dayOfWeek: localParts ? localParts.weekdayIndex : dt.getUTCDay(),
       date: localParts ? localParts.day : dt.getUTCDate(),
@@ -155,20 +329,24 @@ async function upsertWeatherDocs(location, name, data) {
       min: localParts ? localParts.minute : dt.getUTCMinutes(),
       precipProb: precipProb?.[i],
       precipType: [snowfall?.[i] > 0 ? 'snow' : 'rain'], // naive; adjust if needed
-      precip: mmToIn(precip?.[i]),
-      snow: cmToIn(snowfall?.[i]),
-      windspeed: wind?.[i],          // in km/h; convert to mph if you prefer: *0.621371
+      precip: precipIn,
+      snow: snowIn,
+      rain: rainIn,
+      windspeed: wind?.[i],          // mph
       cloudCover: clouds?.[i],
       visibility: visibility?.[i] != null ? visibility[i] / 1609.34 : null, // m → miles
+      freezingLevelFt,
+      snowDepthIn,
       conditions,
       icon,
-      temp: toF(temps?.[i]),
-      feelsLike: toF(feels?.[i]),
+      temp: temps?.[i] ?? null,
+      feelsLike: feels?.[i] ?? null,
     });
   }
 
   // Upsert all docs
   if (docs.length) {
+    // ops helper.
     const ops = docs.map((doc) => ({
       updateOne: { filter: { key: doc.key }, update: doc, upsert: true },
     }));
@@ -176,4 +354,9 @@ async function upsertWeatherDocs(location, name, data) {
   }
 }
 
-module.exports = { fetchLocation };
+module.exports = {
+  fetchLocation,
+  fetchLocationModels,
+  listLocationElevations,
+  FORECAST_MODELS,
+};

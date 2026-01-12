@@ -27,6 +27,11 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
     .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.75rem; }
+    .tile-strip { display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 0.5rem; scroll-snap-type: x mandatory; }
+    .tile { flex: 0 0 260px; scroll-snap-align: start; }
+    .tile-strip::-webkit-scrollbar { height: 8px; }
+    .tile-strip::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 8px; }
+    .tile-strip::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); border-radius: 8px; }
     .flex-row { display: flex; gap: 1rem; flex-wrap: wrap; }
     .flex-row label { margin-right: 0; }
     label.query-group { display: flex; align-items: center; gap: 0.5rem; }
@@ -108,11 +113,14 @@
 <body>
   <div class="card">
     <h1>Admin Console</h1>
+    <div style="margin-bottom:0.75rem;">
+      <a href="/" class="text-link">Go to Snowcast</a>
+    </div>
     <div id="authGate" class="auth-gate">
       <label for="loginEmail">Admin Email:</label>
       <input type="email" id="loginEmail" placeholder="name@example.com" />
       <button id="sendLinkBtn">Send Login Link</button>
-      <div id="authStatus" class="status"></div>
+      <div id="authStatus" class="status hidden"></div>
       <p style="margin:0.5rem 0 0;font-size:0.9rem;color:#555;">We’ll email a one-time link. Keep this page open, then click the link on the same browser.</p>
     </div>
     <div id="appContent" class="hidden">
@@ -129,6 +137,8 @@
       <button class="tab-btn" data-tab="discountCodesTab">Discount Codes</button>
       <button class="tab-btn" data-tab="apiKeysTab">API Keys</button>
       <button class="tab-btn" data-tab="engagementTab">Engagement</button>
+      <button class="tab-btn" data-tab="logsTab">Logs</button>
+      <button class="tab-btn" data-tab="modelsTab">Models</button>
       <button class="tab-btn" data-tab="configTab">Config</button>
     </div>
 
@@ -138,7 +148,7 @@
         <label>
           Location:
           <select id="dailyLocationSelect">
-            <option value="">Loading...</option>
+            <option value="">Select a location</option>
           </select>
         </label>
         <label>
@@ -148,6 +158,23 @@
         <label>
           End Date:
           <input type="date" id="dailyEndDate" />
+        </label>
+        <label>
+          Model:
+          <select id="dailyModelSelect">
+            <option value="blend">Blend</option>
+            <option value="gfs">GFS</option>
+            <option value="ecmwf">ECMWF</option>
+            <option value="hrrr">HRRR</option>
+          </select>
+        </label>
+        <label>
+          Elevation:
+          <select id="dailyElevationSelect">
+            <option value="top">Top</option>
+            <option value="mid">Mid</option>
+            <option value="base">Base</option>
+          </select>
         </label>
         <label>
           Mode:
@@ -174,7 +201,7 @@
         </thead>
         <tbody></tbody>
       </table>
-      <div id="dailyStatus" class="status"></div>
+      <div id="dailyStatus" class="status hidden"></div>
     </div>
 
     <div id="hourlyTab" class="tab-panel">
@@ -183,7 +210,7 @@
         <label>
           Location:
           <select id="hourlyLocationSelect">
-            <option value="">Loading...</option>
+            <option value="">Select a location</option>
           </select>
         </label>
         <label>
@@ -193,6 +220,23 @@
         <label>
           End Date:
           <input type="date" id="hourlyEndDate" />
+        </label>
+        <label>
+          Model:
+          <select id="hourlyModelSelect">
+            <option value="blend">Blend</option>
+            <option value="gfs">GFS</option>
+            <option value="ecmwf">ECMWF</option>
+            <option value="hrrr">HRRR</option>
+          </select>
+        </label>
+        <label>
+          Elevation:
+          <select id="hourlyElevationSelect">
+            <option value="top">Top</option>
+            <option value="mid">Mid</option>
+            <option value="base">Base</option>
+          </select>
         </label>
         <button id="loadHourlyBtn">Load</button>
       </div>
@@ -210,12 +254,12 @@
         </thead>
         <tbody></tbody>
       </table>
-      <div id="hourlyStatus" class="status"></div>
+      <div id="hourlyStatus" class="status hidden"></div>
     </div>
 
     <div id="locationsTab" class="tab-panel">
       <h2>Locations</h2>
-      <div id="backfillStatus" class="status"></div>
+      <div id="backfillStatus" class="status hidden"></div>
 
       <form id="locationSearchForm" class="flex-row">
         <label class="query-group">
@@ -232,6 +276,7 @@
           </select>
         </label>
         <button type="button" id="openAddLocationBtn">Add Location</button>
+        <button type="button" id="openFetchForecastBtn">Fetch Forecast</button>
         <button type="button" id="openBackfillBtn">Backfill Weather</button>
         <div class="pagination-controls" style="margin-left:auto; display:flex; align-items:center; gap:0.5rem;">
           <label>
@@ -257,13 +302,16 @@
             <th>Lat</th>
             <th>Lon</th>
             <th>TZ</th>
+            <th>Base ft</th>
+            <th>Mid ft</th>
+            <th>Top ft</th>
             <th>Resort?</th>
             <th></th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
-      <div id="locationStatus" class="status"></div>
+      <div id="locationStatus" class="status hidden"></div>
     </div>
 
     <div id="apiKeysTab" class="tab-panel">
@@ -282,7 +330,7 @@
         </div>
         <div style="margin-top:0.35rem; font-size:0.9rem; color:#666;">Store this key securely; it will not be shown again.</div>
       </div>
-      <div id="apiClientResult" class="status"></div>
+      <div id="apiClientResult" class="status hidden"></div>
       <table id="apiClientsTable" style="display:none;">
         <thead>
           <tr>
@@ -302,10 +350,10 @@
         </thead>
         <tbody></tbody>
       </table>
-      <div id="apiClientsStatus" class="status"></div>
+      <div id="apiClientsStatus" class="status hidden"></div>
       <div id="apiClientAccessPanel" class="card" style="margin-top:1rem; display:none;">
         <h3>Recent Access</h3>
-        <div id="apiClientAccessStatus" class="status"></div>
+        <div id="apiClientAccessStatus" class="status hidden"></div>
         <ul id="apiClientAccessList"></ul>
       </div>
     </div>
@@ -323,19 +371,38 @@
         </label>
         <button type="button" id="engagementRefreshBtn">Refresh</button>
       </div>
-      <div class="card" style="margin-top:0.75rem;">
-        <h3>Summary</h3>
-        <table>
-          <tbody>
-            <tr><td>Total events</td><td id="engagementTotalEvents">-</td></tr>
-            <tr><td>Unique users</td><td id="engagementUniqueUsers">-</td></tr>
-            <tr><td>Unique sessions</td><td id="engagementUniqueSessions">-</td></tr>
-            <tr><td>New users today</td><td id="engagementNewUsersCount">-</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="grid-2" style="margin-top:0.75rem;">
-        <div class="card">
+      <div class="tile-strip" id="engagementTiles">
+        <div class="card tile">
+          <h3>Usage</h3>
+          <table>
+            <tbody>
+              <tr><td>Events per session</td><td id="engagementEventsPerSession">-</td></tr>
+              <tr><td>Clicks per session</td><td id="engagementClicksPerSession">-</td></tr>
+              <tr><td>Avg session</td><td id="engagementAvgSession">-</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card tile">
+          <h3>Users</h3>
+          <table>
+            <tbody>
+              <tr><td>New users</td><td id="engagementNewUsersCount">-</td></tr>
+              <tr><td>Unique users</td><td id="engagementUniqueUsers">-</td></tr>
+              <tr><td>Unique sessions</td><td id="engagementUniqueSessions">-</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card tile">
+          <h3>Page Type Clicks</h3>
+          <table>
+            <tbody>
+              <tr><td>Day Tile</td><td id="engagementDayTileClicks">-</td></tr>
+              <tr><td>Hourly</td><td id="engagementHourlyClicks">-</td></tr>
+              <tr><td>Pow Alert</td><td id="engagementPowAlertClicks">-</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card tile">
           <h3>Top Events</h3>
           <table id="engagementTopEventsTable">
             <thead>
@@ -344,7 +411,7 @@
             <tbody></tbody>
           </table>
         </div>
-        <div class="card">
+        <div class="card tile">
           <h3>Top Resorts</h3>
           <table id="engagementTopLocationsTable">
             <thead>
@@ -354,20 +421,55 @@
           </table>
         </div>
       </div>
-      <div class="card" style="margin-top:1rem;">
-        <h3>New Users Today (Seattle)</h3>
-        <table id="engagementNewUsersTable" style="display:none;">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Name</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-        <div id="engagementStatus" class="status"></div>
+      <div id="engagementStatus" class="status hidden" style="margin-top:1rem;"></div>
+    </div>
+
+    <div id="logsTab" class="tab-panel">
+      <h2>Logs</h2>
+      <div class="flex-row">
+        <button id="loadLogsBtn">Refresh Logs</button>
+        <label>
+          Type:
+          <select id="logsTypeFilter">
+            <option value="">All Types</option>
+          </select>
+        </label>
       </div>
+      <table id="logsTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Type</th>
+            <th>Message</th>
+            <th>Meta</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="logsStatus" class="status hidden"></div>
+    </div>
+
+    <div id="modelsTab" class="tab-panel">
+      <h2>Forecast Models</h2>
+      <div class="flex-row">
+        <button id="loadModelsBtn">Refresh Models</button>
+      </div>
+      <table id="modelsTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Label</th>
+            <th>API Param</th>
+            <th>Max Forecast Days</th>
+            <th>Refresh Hours</th>
+            <th>Enabled</th>
+            <th>Last Fetch</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="modelsStatus" class="status hidden"></div>
     </div>
 
     <div id="configTab" class="tab-panel">
@@ -381,22 +483,33 @@
         </thead>
         <tbody></tbody>
       </table>
-      <div id="status" class="status"></div>
+      <div id="status" class="status hidden"></div>
     </div>
 
     <div id="usersTab" class="tab-panel">
-      <h2>Admin Users</h2>
+      <h2>Users</h2>
       <div class="form-actions" style="margin-bottom:0.5rem;">
         <button type="button" id="openAdminUserBtn">Add User</button>
+        <label style="display:inline-flex; align-items:center; gap:0.35rem;">
+          Range:
+          <select id="adminUserEngagementRange">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </label>
         <button type="button" id="adminUserRefreshBtn">Refresh</button>
       </div>
-      <div id="adminUsersStatus" class="status"></div>
+      <div id="adminUsersStatus" class="status hidden"></div>
       <table id="adminUsersTable" style="display:none;">
         <thead>
           <tr>
             <th>Email</th>
             <th>Name</th>
             <th>Role</th>
+            <th>Active Days</th>
+            <th>Clicks / Session</th>
+            <th>Avg Session</th>
             <th>Premium Expires</th>
             <th>Status</th>
             <th>Last Login</th>
@@ -428,7 +541,7 @@
       </table>
       <div class="form-actions" style="margin-top:0.75rem;">
         <button type="button" id="saveRoleLabelsBtn">Save Roles</button>
-        <span id="roleLabelsStatus" class="status" style="margin:0;"></span>
+        <span id="roleLabelsStatus" class="status hidden" style="margin:0;"></span>
       </div>
     </div>
 
@@ -438,7 +551,7 @@
         <button type="button" id="openDiscountCodeBtn">Add Code</button>
         <button type="button" id="discountCodeRefreshBtn">Refresh</button>
       </div>
-      <div id="discountCodeStatus" class="status"></div>
+      <div id="discountCodeStatus" class="status hidden"></div>
       <table id="discountCodesTable" style="display:none;">
         <thead>
           <tr>
@@ -476,6 +589,9 @@
             <option value="true">Yes</option>
           </select>
         </label>
+        <label>Base Elevation (ft)<input type="number" step="1" id="modalNewBase" required /></label>
+        <label>Mid Elevation (ft)<input type="number" step="1" id="modalNewMid" required /></label>
+        <label>Top Elevation (ft)<input type="number" step="1" id="modalNewTop" required /></label>
         <div class="form-actions">
           <button type="button" class="ghost" id="closeAddLocationBtn">Close</button>
           <button type="submit" id="modalSaveLocationBtn">Add Location</button>
@@ -501,6 +617,23 @@
           <button type="submit" id="backfillSubmitBtn">Run Backfill</button>
         </div>
       </form>
+    </div>
+  </div>
+  <div id="fetchForecastModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="fetchForecastModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="fetchForecastModalTitle">Fetch Forecast</h3>
+      </div>
+      <form id="fetchForecastForm" class="backfill-form">
+        <label class="stacked-label">Locations
+          <select id="fetchForecastLocations" multiple size="8"></select>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="ghost" id="closeFetchForecastBtn">Close</button>
+          <button type="submit" id="fetchForecastSubmitBtn">Fetch Forecast</button>
+        </div>
+      </form>
+      <div id="fetchForecastStatus" class="status hidden"></div>
     </div>
   </div>
   <div id="adminUserModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminUserModalTitle">
@@ -596,6 +729,9 @@
     let cachedLocations = [];
     let hasLoadedApiClients = false;
     let hasLoadedEngagement = false;
+    let hasLoadedLogs = false;
+    let hasLoadedModels = false;
+    let logsCache = [];
     const authGate = document.getElementById('authGate');
     const appContent = document.getElementById('appContent');
     const loginEmailInput = document.getElementById('loginEmail');
@@ -635,6 +771,12 @@
       }
       if (tabId === 'engagementTab' && !hasLoadedEngagement) {
         loadEngagement();
+      }
+      if (tabId === 'logsTab' && !hasLoadedLogs) {
+        loadLogs();
+      }
+      if (tabId === 'modelsTab' && !hasLoadedModels) {
+        loadForecastModels();
       }
       localStorage.setItem(tabStorageKey, tabId);
     }
@@ -677,10 +819,9 @@
     async function requestMagicLink() {
       const email = loginEmailInput.value.trim();
       if (!email) {
-        authStatus.textContent = 'Email is required';
+        setStatusToast(authStatus, 'Email is required', true);
         return;
       }
-      authStatus.textContent = 'Sending link...';
       sendLinkBtn.disabled = true;
       try {
         const res = await fetch('/admin/auth/request-link', {
@@ -693,9 +834,9 @@
           const text = await res.text();
           throw new Error(text || 'Could not send link');
         }
-        authStatus.textContent = 'Check your email for the magic link. Use this browser to open it.';
+        setStatusToast(authStatus, 'Check your email for the magic link. Use this browser to open it.');
       } catch (err) {
-        authStatus.textContent = err.message;
+        setStatusToast(authStatus, err.message || 'Could not send link', true);
       } finally {
         sendLinkBtn.disabled = false;
       }
@@ -920,7 +1061,7 @@
 
     async function saveRoleLabels() {
       if (!roleLabelsStatus) return;
-      roleLabelsStatus.textContent = 'Saving...';
+      setStatusToast(roleLabelsStatus, 'Saving...');
       try {
         const updates = getRoleLabelUpdates();
         for (const entry of updates) {
@@ -930,11 +1071,11 @@
             body: JSON.stringify(entry.payload),
           });
         }
-        roleLabelsStatus.textContent = 'Saved';
+        setStatusToast(roleLabelsStatus, 'Saved');
         hydrateRoleStateFromInputs();
         await loadRoleLabels();
       } catch (err) {
-        roleLabelsStatus.textContent = err.message || 'Save failed';
+        setStatusToast(roleLabelsStatus, err.message || 'Save failed', true);
       }
     }
 
@@ -946,7 +1087,7 @@
       appContent.classList.remove('hidden');
       const statusText = sessionStatus?.querySelector('span');
       if (statusText) {
-        statusText.textContent = user?.email ? `Signed in as ${user.email}` : 'Signed in';
+        statusText.textContent = '';
       }
       if (logoutBtn) {
         logoutBtn.classList.remove('hidden');
@@ -1020,11 +1161,10 @@
     async function logout() {
       await fetch('/admin/auth/logout', { method: 'POST', credentials: 'include' });
       showLogin();
-      authStatus.textContent = 'Signed out';
+      setStatusToast(authStatus, 'Signed out');
     }
 
     async function loadConfig() {
-      setStatus('Loading...');
       try {
         const res = await authFetch('/admin/config');
         const data = await res.json();
@@ -1032,7 +1172,7 @@
         setStatus('Loaded ' + data.length + ' entries');
         updateApiDefaultsFromConfig(data);
       } catch (err) {
-        setStatus(err.message);
+        setStatus(err.message, true);
       }
     }
 
@@ -1064,7 +1204,7 @@
             }
             setStatus('Saved ' + entry.key);
           } catch (err) {
-            setStatus(err.message);
+            setStatus(err.message, true);
           } finally {
             button.disabled = false;
           }
@@ -1081,8 +1221,8 @@
       return Number.isNaN(num) ? val : num;
     }
 
-    function setStatus(msg) {
-      statusEl.textContent = msg || '';
+    function setStatus(msg, isError = false) {
+      setStatusToast(statusEl, msg, isError);
     }
 
     function updateApiDefaultsFromConfig(entries) {
@@ -1122,16 +1262,26 @@
     const modalLonInput = document.getElementById('modalNewLon');
     const modalTzSelect = document.getElementById('modalNewTz');
     const modalResortSelect = document.getElementById('modalNewResort');
+    const modalBaseInput = document.getElementById('modalNewBase');
+    const modalMidInput = document.getElementById('modalNewMid');
+    const modalTopInput = document.getElementById('modalNewTop');
     const modalDerivedCountryEl = document.getElementById('modalDerivedCountry');
     const modalDerivedRegionEl = document.getElementById('modalDerivedRegion');
     const modalSaveLocationBtn = document.getElementById('modalSaveLocationBtn');
     const backfillModal = document.getElementById('backfillModal');
     const openBackfillBtn = document.getElementById('openBackfillBtn');
+    const openFetchForecastBtn = document.getElementById('openFetchForecastBtn');
     const closeBackfillBtn = document.getElementById('closeBackfillBtn');
     const backfillForm = document.getElementById('backfillForm');
     const backfillLocations = document.getElementById('backfillLocations');
     const backfillStatus = document.getElementById('backfillStatus');
     const backfillSubmitBtn = document.getElementById('backfillSubmitBtn');
+    const fetchForecastModal = document.getElementById('fetchForecastModal');
+    const closeFetchForecastBtn = document.getElementById('closeFetchForecastBtn');
+    const fetchForecastForm = document.getElementById('fetchForecastForm');
+    const fetchForecastLocations = document.getElementById('fetchForecastLocations');
+    const fetchForecastStatus = document.getElementById('fetchForecastStatus');
+    const fetchForecastSubmitBtn = document.getElementById('fetchForecastSubmitBtn');
     populateModalTimeZones();
     if (modalLatInput) modalLatInput.addEventListener('blur', fetchModalDerivedMetadata);
     if (modalLonInput) modalLonInput.addEventListener('blur', fetchModalDerivedMetadata);
@@ -1142,6 +1292,8 @@
     const hourlySelect = document.getElementById('hourlyLocationSelect');
     const hourlyStartInput = document.getElementById('hourlyStartDate');
     const hourlyEndInput = document.getElementById('hourlyEndDate');
+    const hourlyModelSelect = document.getElementById('hourlyModelSelect');
+    const hourlyElevationSelect = document.getElementById('hourlyElevationSelect');
     const hourlyStatus = document.getElementById('hourlyStatus');
     const hourlyTable = document.getElementById('hourlyTable');
     const hourlyTableBody = hourlyTable.querySelector('tbody');
@@ -1149,6 +1301,8 @@
     const dailySelect = document.getElementById('dailyLocationSelect');
     const dailyStartInput = document.getElementById('dailyStartDate');
     const dailyEndInput = document.getElementById('dailyEndDate');
+    const dailyModelSelect = document.getElementById('dailyModelSelect');
+    const dailyElevationSelect = document.getElementById('dailyElevationSelect');
     const dailyStatus = document.getElementById('dailyStatus');
     const dailyModeSelect = document.getElementById('dailyMode');
     const dailyTable = document.getElementById('dailyTable');
@@ -1162,6 +1316,15 @@
     const apiClientsBody = apiClientsTable ? apiClientsTable.querySelector('tbody') : null;
     const apiClientsStatus = document.getElementById('apiClientsStatus');
     const apiClientEditingId = document.getElementById('apiClientEditingId');
+    const logsTable = document.getElementById('logsTable');
+    const logsTableBody = logsTable ? logsTable.querySelector('tbody') : null;
+    const logsStatus = document.getElementById('logsStatus');
+    const loadLogsBtn = document.getElementById('loadLogsBtn');
+    const logsTypeFilter = document.getElementById('logsTypeFilter');
+    const modelsTable = document.getElementById('modelsTable');
+    const modelsTableBody = modelsTable ? modelsTable.querySelector('tbody') : null;
+    const modelsStatus = document.getElementById('modelsStatus');
+    const loadModelsBtn = document.getElementById('loadModelsBtn');
     const apiClientRegenerateRow = document.getElementById('apiClientRegenerateRow');
     const apiClientRegenerateKey = document.getElementById('apiClientRegenerateKey');
     const apiClientSubmitBtn = document.getElementById('apiClientSubmitBtn');
@@ -1194,6 +1357,7 @@
     const adminUserSubmitBtn = document.getElementById('adminUserSubmitBtn');
     const adminUserCancelBtn = document.getElementById('adminUserCancelBtn');
     const adminUserRefreshBtn = document.getElementById('adminUserRefreshBtn');
+    const adminUserEngagementRange = document.getElementById('adminUserEngagementRange');
     const adminUsersStatus = document.getElementById('adminUsersStatus');
     const adminUsersTable = document.getElementById('adminUsersTable');
     const adminUsersBody = adminUsersTable ? adminUsersTable.querySelector('tbody') : null;
@@ -1214,16 +1378,20 @@
     const discountCodesBody = discountCodesTable ? discountCodesTable.querySelector('tbody') : null;
     const engagementRange = document.getElementById('engagementRange');
     const engagementRefreshBtn = document.getElementById('engagementRefreshBtn');
-    const engagementTotalEvents = document.getElementById('engagementTotalEvents');
+    const engagementEventsPerSession = document.getElementById('engagementEventsPerSession');
+    const engagementAvgSession = document.getElementById('engagementAvgSession');
+    const engagementClicksPerSession = document.getElementById('engagementClicksPerSession');
     const engagementUniqueUsers = document.getElementById('engagementUniqueUsers');
     const engagementUniqueSessions = document.getElementById('engagementUniqueSessions');
     const engagementNewUsersCount = document.getElementById('engagementNewUsersCount');
+    const engagementDayTileClicks = document.getElementById('engagementDayTileClicks');
+    const engagementHourlyClicks = document.getElementById('engagementHourlyClicks');
+    const engagementPowAlertClicks = document.getElementById('engagementPowAlertClicks');
     const engagementTopEventsTable = document.getElementById('engagementTopEventsTable');
     const engagementTopEventsBody = engagementTopEventsTable ? engagementTopEventsTable.querySelector('tbody') : null;
     const engagementTopLocationsTable = document.getElementById('engagementTopLocationsTable');
     const engagementTopLocationsBody = engagementTopLocationsTable ? engagementTopLocationsTable.querySelector('tbody') : null;
-    const engagementNewUsersTable = document.getElementById('engagementNewUsersTable');
-    const engagementNewUsersBody = engagementNewUsersTable ? engagementNewUsersTable.querySelector('tbody') : null;
+    const engagementTiles = document.getElementById('engagementTiles');
     const engagementStatus = document.getElementById('engagementStatus');
 
     const DEFAULT_ROLE_LABELS = {
@@ -1320,6 +1488,9 @@
     if (backfillForm) {
       backfillForm.addEventListener('submit', submitBackfill);
     }
+    if (fetchForecastForm) {
+      fetchForecastForm.addEventListener('submit', submitFetchForecast);
+    }
     if (openAddLocationBtn) {
       openAddLocationBtn.addEventListener('click', () => openAddLocationModal());
     }
@@ -1339,13 +1510,26 @@
     if (openBackfillBtn) {
       openBackfillBtn.addEventListener('click', () => openBackfillModal());
     }
+    if (openFetchForecastBtn) {
+      openFetchForecastBtn.addEventListener('click', () => openFetchForecastModal());
+    }
     if (closeBackfillBtn) {
       closeBackfillBtn.addEventListener('click', () => closeBackfillModal());
+    }
+    if (closeFetchForecastBtn) {
+      closeFetchForecastBtn.addEventListener('click', () => closeFetchForecastModal());
     }
     if (backfillModal) {
       backfillModal.addEventListener('click', (event) => {
         if (event.target === backfillModal) {
           closeBackfillModal();
+        }
+      });
+    }
+    if (fetchForecastModal) {
+      fetchForecastModal.addEventListener('click', (event) => {
+        if (event.target === fetchForecastModal) {
+          closeFetchForecastModal();
         }
       });
     }
@@ -1392,10 +1576,21 @@
     if (dailySelect) dailySelect.addEventListener('change', loadDailyWeather);
     if (dailyStartInput) dailyStartInput.addEventListener('change', loadDailyWeather);
     if (dailyEndInput) dailyEndInput.addEventListener('change', loadDailyWeather);
+    if (dailyModelSelect) dailyModelSelect.addEventListener('change', loadDailyWeather);
+    if (dailyElevationSelect) dailyElevationSelect.addEventListener('change', loadDailyWeather);
     if (dailyModeSelect) dailyModeSelect.addEventListener('change', loadDailyWeather);
     if (hourlySelect) hourlySelect.addEventListener('change', loadHourlyWeather);
     if (hourlyStartInput) hourlyStartInput.addEventListener('change', loadHourlyWeather);
     if (hourlyEndInput) hourlyEndInput.addEventListener('change', loadHourlyWeather);
+    if (hourlyModelSelect) hourlyModelSelect.addEventListener('change', loadHourlyWeather);
+    if (hourlyElevationSelect) hourlyElevationSelect.addEventListener('change', loadHourlyWeather);
+    if (loadLogsBtn) loadLogsBtn.addEventListener('click', () => loadLogs(true));
+    if (logsTypeFilter) {
+      logsTypeFilter.addEventListener('change', () => {
+        renderLogsTable(getFilteredLogs());
+      });
+    }
+    if (loadModelsBtn) loadModelsBtn.addEventListener('click', () => loadForecastModels(true));
     if (apiClientForm) {
       apiClientForm.addEventListener('submit', submitApiClient);
     }
@@ -1421,6 +1616,9 @@
     }
     if (adminUserRefreshBtn) {
       adminUserRefreshBtn.addEventListener('click', () => loadAdminUsers());
+    }
+    if (adminUserEngagementRange) {
+      adminUserEngagementRange.addEventListener('change', () => loadAdminUsers());
     }
     if (discountCodeForm) {
       discountCodeForm.addEventListener('submit', submitDiscountCode);
@@ -1462,7 +1660,6 @@
       }
       params.set('limit', String(pageSize));
       params.set('page', String(locationPage));
-      setLocationStatus('Loading locations...');
       try {
         const res = await authFetch('/locations?' + params.toString());
         if (!res.ok) throw new Error('Failed to load locations');
@@ -1477,8 +1674,7 @@
         updateLocationPagination(pageSize, results.length);
         setLocationStatus(`Loaded ${results.length} locations`);
       } catch (err) {
-        setLocationStatus(err.message);
-        showToast(err.message, true);
+        setLocationStatus(err.message, true);
       }
     }
 
@@ -1499,6 +1695,9 @@
           <td>${loc.lat}</td>
           <td>${loc.lon}</td>
           <td>${loc.tz_iana || ''}</td>
+          <td>${loc.baseElevationFt ?? ''}</td>
+          <td>${loc.midElevationFt ?? ''}</td>
+          <td>${loc.topElevationFt ?? ''}</td>
           <td>${loc.isSkiResort ? 'Yes' : 'No'}</td>
           <td>
             <button type="button" class="edit-btn" ${isReadOnly ? 'style="display:none;"' : ''}>Edit</button>
@@ -1539,6 +1738,30 @@
             option.selected = true;
           }
           backfillLocations.appendChild(option);
+        });
+    }
+
+    function populateFetchForecastLocations() {
+      if (!fetchForecastLocations) return;
+      const selected = new Set(Array.from(fetchForecastLocations.selectedOptions || []).map((opt) => opt.value));
+      fetchForecastLocations.innerHTML = '';
+      const allOption = document.createElement('option');
+      allOption.value = '__all__';
+      allOption.textContent = 'All Locations';
+      if (selected.has(allOption.value)) {
+        allOption.selected = true;
+      }
+      fetchForecastLocations.appendChild(allOption);
+      (cachedLocations || [])
+        .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+        .forEach((loc) => {
+          const option = document.createElement('option');
+          option.value = loc.id;
+          option.textContent = loc.name || 'Unnamed';
+          if (selected.has(option.value)) {
+            option.selected = true;
+          }
+          fetchForecastLocations.appendChild(option);
         });
     }
 
@@ -1610,6 +1833,16 @@
 
     function closeBackfillModal() {
       closeModal(backfillModal);
+    }
+
+    function openFetchForecastModal() {
+      if (!fetchForecastModal) return;
+      loadFetchForecastLocations();
+      openModal(fetchForecastModal, '#fetchForecastLocations');
+    }
+
+    function closeFetchForecastModal() {
+      closeModal(fetchForecastModal);
     }
 
     function openDiscountCodeModal() {
@@ -1694,11 +1927,13 @@
         ? (cachedLocations || []).map((loc) => loc.id)
         : resortIds;
       if (!locationIds.length) {
-        backfillStatus.textContent = 'Select at least one location or choose All Locations.';
+        setStatusToast(backfillStatus, 'Select at least one location or choose All Locations.', true);
         return;
       }
-      backfillStatus.textContent = 'Starting backfill...';
+      setStatusToast(backfillStatus, 'Starting backfill...');
       if (backfillSubmitBtn) backfillSubmitBtn.disabled = true;
+      closeBackfillModal();
+      showToast(`Backfill started for ${locationIds.length} locations.`);
       try {
         const res = await authFetch('/admin/backfill', {
           method: 'POST',
@@ -1711,31 +1946,74 @@
           const text = await res.text();
           throw new Error(text || 'Backfill failed');
         }
-        const payload = await res.json();
-        backfillStatus.textContent = '';
-        closeBackfillModal();
-        showToast(`Backfill started for ${payload.count || 0} locations.`);
       } catch (err) {
-        backfillStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(backfillStatus, err.message, true);
       } finally {
         if (backfillSubmitBtn) backfillSubmitBtn.disabled = false;
       }
     }
 
+    async function submitFetchForecast(event) {
+      event.preventDefault();
+      if (!fetchForecastStatus) return;
+      const selectedIds = Array.from(fetchForecastLocations?.selectedOptions || []).map((opt) => opt.value);
+      const useAllLocations = selectedIds.includes('__all__');
+      const resortIds = selectedIds.filter((id) => id !== '__all__');
+      const locationIds = useAllLocations
+        ? (cachedLocations || []).map((loc) => loc.id)
+        : resortIds;
+      if (!locationIds.length) {
+        setStatusToast(fetchForecastStatus, 'Select at least one location or choose All Locations.', true);
+        return;
+      }
+      setStatusToast(fetchForecastStatus, 'Starting forecast fetch...');
+      if (fetchForecastSubmitBtn) fetchForecastSubmitBtn.disabled = true;
+      closeFetchForecastModal();
+      showToast(`Forecast fetch started for ${locationIds.length} locations.`);
+      try {
+        const res = await authFetch('/admin/forecast/fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            locationIds,
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Fetch failed');
+        }
+      } catch (err) {
+        setStatusToast(fetchForecastStatus, err.message, true);
+      } finally {
+        if (fetchForecastSubmitBtn) fetchForecastSubmitBtn.disabled = false;
+      }
+    }
+
     async function loadBackfillResorts() {
       if (!backfillStatus) return;
-      backfillStatus.textContent = 'Loading resorts for backfill...';
       try {
         const res = await authFetch('/admin/locations/backfill');
         if (!res.ok) throw new Error('Failed to load locations');
         const data = await res.json();
         cachedLocations = Array.isArray(data) ? data : [];
         populateBackfillLocations();
-        backfillStatus.textContent = '';
+        setStatusToast(backfillStatus, '');
       } catch (err) {
-        backfillStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(backfillStatus, err.message, true);
+      }
+    }
+
+    async function loadFetchForecastLocations() {
+      if (!fetchForecastStatus) return;
+      try {
+        const res = await authFetch('/admin/locations/backfill');
+        if (!res.ok) throw new Error('Failed to load locations');
+        const data = await res.json();
+        cachedLocations = Array.isArray(data) ? data : [];
+        populateFetchForecastLocations();
+        setStatusToast(fetchForecastStatus, '');
+      } catch (err) {
+        setStatusToast(fetchForecastStatus, err.message, true);
       }
     }
 
@@ -1749,17 +2027,15 @@
         });
         if (!res.ok) throw new Error('Delete failed');
         setLocationStatus('Deleted location');
-        showToast('Location deleted');
         loadLocations();
       } catch (err) {
-        setLocationStatus(err.message);
-        showToast(err.message, true);
+        setLocationStatus(err.message, true);
       }
     }
 
     async function submitModalLocation(event) {
       event.preventDefault();
-      if (!modalNameInput || !modalLatInput || !modalLonInput || !modalTzSelect || !modalResortSelect) return;
+      if (!modalNameInput || !modalLatInput || !modalLonInput || !modalTzSelect || !modalResortSelect || !modalBaseInput || !modalMidInput || !modalTopInput) return;
       const editingId = modalEditingId ? modalEditingId.value : '';
       const payload = {
         name: modalNameInput.value.trim(),
@@ -1767,9 +2043,15 @@
         lon: Number(modalLonInput.value),
         tz_iana: modalTzSelect.value,
         isSkiResort: modalResortSelect.value === 'true',
+        baseElevationFt: Number(modalBaseInput.value),
+        midElevationFt: Number(modalMidInput.value),
+        topElevationFt: Number(modalTopInput.value),
       };
       if (!payload.name || Number.isNaN(payload.lat) || Number.isNaN(payload.lon) || !payload.tz_iana) {
-        return setLocationStatus('All required fields must be filled');
+        return setLocationStatus('All required fields must be filled', true);
+      }
+      if (Number.isNaN(payload.baseElevationFt) || Number.isNaN(payload.midElevationFt) || Number.isNaN(payload.topElevationFt)) {
+        return setLocationStatus('All elevation fields are required', true);
       }
       setLocationStatus(editingId ? 'Saving location...' : 'Creating location...');
       try {
@@ -1783,12 +2065,10 @@
           throw new Error(text || 'Save failed');
         }
         setLocationStatus(editingId ? 'Location updated' : 'Location created');
-        showToast(editingId ? 'Location updated successfully.' : 'Location created successfully.');
         closeAddLocationModal();
         loadLocations();
       } catch (err) {
-        setLocationStatus(err.message);
-        showToast(err.message, true);
+        setLocationStatus(err.message, true);
       }
     }
 
@@ -1827,29 +2107,30 @@
       if (modalLonInput) modalLonInput.value = location.lon ?? '';
       setModalTimeZoneValue(location.tz_iana);
       if (modalResortSelect) modalResortSelect.value = location.isSkiResort ? 'true' : 'false';
+      if (modalBaseInput) modalBaseInput.value = location.baseElevationFt ?? '';
+      if (modalMidInput) modalMidInput.value = location.midElevationFt ?? '';
+      if (modalTopInput) modalTopInput.value = location.topElevationFt ?? '';
       if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = location.country || 'Unknown';
       if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = location.region || '-';
       openModal(addLocationModal, '#modalNewName');
       setLocationStatus(`Editing ${location.name}`);
     }
 
-    function setLocationStatus(msg) {
-      locationStatus.textContent = msg || '';
+    function setLocationStatus(msg, isError = false) {
+      setStatusToast(locationStatus, msg, isError);
     }
 
     async function loadApiClients() {
       if (!apiClientsStatus) return;
-      apiClientsStatus.textContent = 'Loading API clients...';
       try {
         const res = await authFetch('/admin/api-clients');
         if (!res.ok) throw new Error('Failed to load API clients');
         const data = await res.json();
         renderApiClients(data || []);
         hasLoadedApiClients = true;
-        apiClientsStatus.textContent = `Loaded ${data?.length || 0} clients`;
+        setStatusToast(apiClientsStatus, `Loaded ${data?.length || 0} clients`);
       } catch (err) {
-        apiClientsStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(apiClientsStatus, err.message, true);
       }
     }
 
@@ -1917,7 +2198,8 @@
       const payload = {};
       const name = nameInput?.value.trim();
       if (!name) {
-        apiClientResult.textContent = 'Name is required';
+        apiClientResult.textContent = '';
+        setStatusToast(apiClientsStatus, 'Name is required', true);
         return;
       }
       payload.name = name;
@@ -1942,7 +2224,7 @@
         payload.regenerateKey = Boolean(apiClientRegenerateKey?.checked);
       }
       apiClientResult.textContent = '';
-      apiClientsStatus.textContent = isEditing ? 'Saving client...' : 'Creating API key...';
+      setStatusToast(apiClientsStatus, isEditing ? 'Saving client...' : 'Creating API key...');
       try {
         const endpoint = isEditing ? `/admin/api-clients/${editingId}` : '/admin/api-clients';
         const method = isEditing ? 'PUT' : 'POST';
@@ -1959,24 +2241,24 @@
         const apiKey = data?.apiKey;
         if (apiKey) {
           showApiClientKey(apiKey);
-          apiClientResult.textContent = 'API key created (copy now, shown once)';
+          apiClientResult.textContent = '';
         } else {
-          apiClientResult.textContent = isEditing ? 'Client updated' : 'Client created';
+          apiClientResult.textContent = '';
         }
-        showToast(isEditing ? 'Client updated' : 'API key created');
+        setStatusToast(apiClientsStatus, isEditing ? 'Client updated' : 'API key created');
         resetApiClientForm();
         loadApiClients();
       } catch (err) {
-        apiClientResult.textContent = err.message;
-        showToast(err.message, true);
+        apiClientResult.textContent = '';
+        setStatusToast(apiClientsStatus, err.message, true);
       } finally {
-        apiClientsStatus.textContent = '';
+        setStatusToast(apiClientsStatus, '');
       }
     }
 
     async function toggleApiClient(clientId) {
       if (!clientId || !apiClientsStatus) return;
-      apiClientsStatus.textContent = 'Updating client...';
+      setStatusToast(apiClientsStatus, 'Updating client...');
       try {
         const res = await authFetch(`/admin/api-clients/${clientId}/toggle`, {
           method: 'POST',
@@ -1985,14 +2267,13 @@
           const text = await res.text();
           throw new Error(text || 'Failed to update client');
         }
-        showToast('Client updated');
+        setStatusToast(apiClientsStatus, 'Client updated');
         loadApiClients();
       } catch (err) {
-        apiClientsStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(apiClientsStatus, err.message, true);
       } finally {
         setTimeout(() => {
-          apiClientsStatus.textContent = '';
+          setStatusToast(apiClientsStatus, '');
         }, 1500);
       }
     }
@@ -2002,7 +2283,7 @@
       if (!confirm(`Delete API client "${client.name || client._id}"? This cannot be undone.`)) {
         return;
       }
-      apiClientsStatus.textContent = 'Deleting client...';
+      setStatusToast(apiClientsStatus, 'Deleting client...');
       try {
         const res = await authFetch(`/admin/api-clients/${client._id}`, {
           method: 'DELETE',
@@ -2011,15 +2292,14 @@
           const text = await res.text();
           throw new Error(text || 'Failed to delete client');
         }
-        showToast('Client deleted');
+        setStatusToast(apiClientsStatus, 'Client deleted');
         resetApiClientForm();
         loadApiClients();
       } catch (err) {
-        apiClientsStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(apiClientsStatus, err.message, true);
       } finally {
         setTimeout(() => {
-          apiClientsStatus.textContent = '';
+          setStatusToast(apiClientsStatus, '');
         }, 1500);
       }
     }
@@ -2050,7 +2330,6 @@
 
     async function loadApiClientAccess(client) {
       if (!client || !client._id || !apiClientAccessPanel || !apiClientAccessStatus || !apiClientAccessList) return;
-      apiClientAccessStatus.textContent = 'Loading access...';
       apiClientAccessList.innerHTML = '';
       apiClientAccessPanel.style.display = 'block';
       try {
@@ -2062,7 +2341,7 @@
         const data = await res.json();
         const logs = data?.logs || [];
         if (!logs.length) {
-          apiClientAccessStatus.textContent = 'No recent access records';
+          setStatusToast(apiClientAccessStatus, 'No recent access records');
           return;
         }
         const items = logs.map((log) => {
@@ -2073,9 +2352,9 @@
           return `<li>${ts} — host: ${host} — ip: ${ip} — origin: ${origin}</li>`;
         });
         apiClientAccessList.innerHTML = items.join('');
-        apiClientAccessStatus.textContent = `Showing ${logs.length} recent access records`;
+        setStatusToast(apiClientAccessStatus, `Showing ${logs.length} recent access records`);
       } catch (err) {
-        apiClientAccessStatus.textContent = err.message;
+        setStatusToast(apiClientAccessStatus, err.message, true);
       }
     }
 
@@ -2099,7 +2378,8 @@
       if (apiClientRegenerateKey) {
         apiClientRegenerateKey.checked = false;
       }
-      apiClientResult.textContent = `Editing ${client.name || client._id}`;
+      apiClientResult.textContent = '';
+      setStatusToast(apiClientsStatus, `Editing ${client.name || client._id}`);
       if (apiClientModalTitle) apiClientModalTitle.textContent = 'Edit API Key';
       openModal(apiClientModal, '#apiClientName');
     }
@@ -2171,9 +2451,8 @@
         populateLocationSelect(hourlySelect, sorted);
         populateLocationSelect(dailySelect, sorted);
       } catch (err) {
-        hourlyStatus.textContent = err.message;
-        dailyStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(hourlyStatus, err.message, true);
+        setStatusToast(dailyStatus, err.message, true);
       }
     }
 
@@ -2196,16 +2475,17 @@
 
     async function loadAdminUsers() {
       if (!adminUsersStatus) return;
-      adminUsersStatus.textContent = 'Loading admins...';
       try {
-        const res = await authFetch('/admin/users');
+        const range = adminUserEngagementRange ? Number(adminUserEngagementRange.value) : 30;
+        const res = await authFetch(`/admin/users?days=${range}`);
         if (!res.ok) throw new Error('Failed to load admins');
         const data = await res.json();
         renderAdminUsers(data || []);
-        adminUsersStatus.textContent = `Loaded ${data?.length || 0} admins`;
+        const count = data?.length || 0;
+        const label = count === 1 ? 'user' : 'users';
+        showToast(`Loaded ${count} ${label}`);
       } catch (err) {
-        adminUsersStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(adminUsersStatus, err.message, true);
       }
     }
 
@@ -2216,11 +2496,15 @@
         const roleText = Array.isArray(user.roles) && user.roles.length
           ? user.roles.map((role) => formatRoleLabel(role)).join(', ')
           : '';
+        const engagement = user.engagement || {};
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${user.email || ''}</td>
           <td>${user.name || ''}</td>
           <td>${roleText}</td>
+          <td>${Number.isFinite(user.activeDaysPercent) ? `${user.activeDaysPercent}%` : '0%'}</td>
+          <td>${Number.isFinite(user.clickStats?.clicksPerSession) ? user.clickStats.clicksPerSession.toFixed(1) : '0.0'}</td>
+          <td>${formatDurationMinutes(user.sessionStats?.avgSessionSeconds)}</td>
           <td>${Array.isArray(user.roles) && user.roles.includes('admin') ? 'Never' : formatDateOnly(user.subscriptionExpiresAt)}</td>
           <td>${user.status || ''}</td>
           <td>${formatDateTimeLocal(user.lastLoginAt)}</td>
@@ -2262,10 +2546,10 @@
       const status = adminUserStatusSelect ? adminUserStatusSelect.value : 'active';
       const subscriptionExpiresAt = adminUserSubscriptionExpires?.value || '';
       if (!email) {
-        adminUsersStatus.textContent = 'Email is required';
+        setStatusToast(adminUsersStatus, 'Email is required', true);
         return;
       }
-      adminUsersStatus.textContent = editingId ? 'Saving admin...' : 'Creating admin...';
+      setStatusToast(adminUsersStatus, editingId ? 'Saving user...' : 'Creating user...');
       try {
         const endpoint = editingId ? `/admin/users/${editingId}` : '/admin/users';
         const method = editingId ? 'PUT' : 'POST';
@@ -2281,20 +2565,18 @@
           const text = await res.text();
           throw new Error(text || 'Failed to save admin');
         }
-        adminUsersStatus.textContent = editingId ? 'Admin updated' : 'Admin created';
-        showToast(editingId ? 'Admin updated' : 'Admin created');
+        setStatusToast(adminUsersStatus, editingId ? 'User updated' : 'User created');
         resetAdminUserForm();
         loadAdminUsers();
       } catch (err) {
-        adminUsersStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(adminUsersStatus, err.message, true);
       }
     }
 
     async function toggleAdminStatus(user) {
       if (!user || !user._id) return;
       if (!confirm(`Set ${user.email} to ${user.status === 'active' ? 'suspended' : 'active'}?`)) return;
-      adminUsersStatus.textContent = 'Updating admin...';
+      setStatusToast(adminUsersStatus, 'Updating user...');
       try {
         const res = await authFetch(`/admin/users/${user._id}`, {
           method: 'PUT',
@@ -2305,12 +2587,10 @@
           const text = await res.text();
           throw new Error(text || 'Failed to update admin');
         }
-        adminUsersStatus.textContent = 'Admin updated';
-        showToast('Admin updated');
+        setStatusToast(adminUsersStatus, 'User updated');
         loadAdminUsers();
       } catch (err) {
-        adminUsersStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(adminUsersStatus, err.message, true);
       }
     }
 
@@ -2334,7 +2614,7 @@
       toggleSubscriptionExpiryInput(adminUserRoleSelect?.value);
       if (adminUserModalTitle) adminUserModalTitle.textContent = 'Edit User';
       if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
-      adminUsersStatus.textContent = `Editing ${user.email || ''}`;
+      setStatusToast(adminUsersStatus, `Editing ${user.email || ''}`);
       openModal(adminUserModal, '#adminUserName');
     }
 
@@ -2361,7 +2641,7 @@
     async function deleteAdmin(user) {
       if (!user || !user._id) return;
       if (!confirm(`Delete admin ${user.email}? This cannot be undone.`)) return;
-      adminUsersStatus.textContent = 'Deleting admin...';
+      setStatusToast(adminUsersStatus, 'Deleting user...');
       try {
         const res = await authFetch(`/admin/users/${user._id}`, {
           method: 'DELETE',
@@ -2370,28 +2650,24 @@
           const text = await res.text();
           throw new Error(text || 'Failed to delete admin');
         }
-        adminUsersStatus.textContent = 'Admin deleted';
-        showToast('Admin deleted');
+        setStatusToast(adminUsersStatus, 'User deleted');
         resetAdminUserForm();
         loadAdminUsers();
       } catch (err) {
-        adminUsersStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(adminUsersStatus, err.message, true);
       }
     }
 
     async function loadDiscountCodes() {
       if (!discountCodeStatus) return;
-      discountCodeStatus.textContent = 'Loading discount codes...';
       try {
         const res = await authFetch('/admin/discount-codes');
         if (!res.ok) throw new Error('Failed to load discount codes');
         const data = await res.json();
         renderDiscountCodes(data || []);
-        discountCodeStatus.textContent = `Loaded ${data?.length || 0} codes`;
+        setStatusToast(discountCodeStatus, `Loaded ${data?.length || 0} codes`);
       } catch (err) {
-        discountCodeStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(discountCodeStatus, err.message, true);
       }
     }
 
@@ -2441,10 +2717,10 @@
       const maxUses = discountCodeMaxUses?.value;
       const active = discountCodeActive?.value !== 'false';
       if (!editingId && !code) {
-        discountCodeStatus.textContent = 'Code is required';
+        setStatusToast(discountCodeStatus, 'Code is required', true);
         return;
       }
-      discountCodeStatus.textContent = editingId ? 'Saving discount code...' : 'Creating discount code...';
+      setStatusToast(discountCodeStatus, editingId ? 'Saving discount code...' : 'Creating discount code...');
       try {
         const endpoint = editingId ? `/admin/discount-codes/${editingId}` : '/admin/discount-codes';
         const method = editingId ? 'PUT' : 'POST';
@@ -2460,13 +2736,11 @@
           const text = await res.text();
           throw new Error(text || 'Failed to save discount code');
         }
-        discountCodeStatus.textContent = editingId ? 'Discount code updated' : 'Discount code created';
-        showToast(editingId ? 'Discount code updated' : 'Discount code created');
+        setStatusToast(discountCodeStatus, editingId ? 'Discount code updated' : 'Discount code created');
         resetDiscountCodeForm();
         loadDiscountCodes();
       } catch (err) {
-        discountCodeStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(discountCodeStatus, err.message, true);
       }
     }
 
@@ -2482,7 +2756,7 @@
       if (discountCodeActive) discountCodeActive.value = code.active ? 'true' : 'false';
       if (discountCodeModalTitle) discountCodeModalTitle.textContent = 'Edit Discount Code';
       if (discountCodeSubmitBtn) discountCodeSubmitBtn.textContent = 'Save Code';
-      discountCodeStatus.textContent = `Editing ${code.code || 'code'}`;
+      setStatusToast(discountCodeStatus, `Editing ${code.code || 'code'}`);
       openModal(discountCodeModal, '#discountCodeDuration');
     }
 
@@ -2492,7 +2766,7 @@
 
     async function toggleDiscountCode(code) {
       if (!code?.id) return;
-      discountCodeStatus.textContent = 'Updating code...';
+      setStatusToast(discountCodeStatus, 'Updating code...');
       try {
         const res = await authFetch(`/admin/discount-codes/${code.id}`, {
           method: 'PUT',
@@ -2503,19 +2777,17 @@
           const text = await res.text();
           throw new Error(text || 'Failed to update code');
         }
-        discountCodeStatus.textContent = 'Discount code updated';
-        showToast('Discount code updated');
+        setStatusToast(discountCodeStatus, 'Discount code updated');
         loadDiscountCodes();
       } catch (err) {
-        discountCodeStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(discountCodeStatus, err.message, true);
       }
     }
 
     async function deleteDiscountCode(code) {
       if (!code?.id) return;
       if (!confirm(`Delete discount code "${code.code}"? This cannot be undone.`)) return;
-      discountCodeStatus.textContent = 'Deleting code...';
+      setStatusToast(discountCodeStatus, 'Deleting code...');
       try {
         const res = await authFetch(`/admin/discount-codes/${code.id}`, {
           method: 'DELETE',
@@ -2524,13 +2796,11 @@
           const text = await res.text();
           throw new Error(text || 'Failed to delete code');
         }
-        discountCodeStatus.textContent = 'Discount code deleted';
-        showToast('Discount code deleted');
+        setStatusToast(discountCodeStatus, 'Discount code deleted');
         resetDiscountCodeForm();
         loadDiscountCodes();
       } catch (err) {
-        discountCodeStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(discountCodeStatus, err.message, true);
       }
     }
 
@@ -2543,22 +2813,40 @@
     async function loadEngagementSummary() {
       if (!engagementStatus) return;
       const days = engagementRange ? Number(engagementRange.value) : 7;
-      engagementStatus.textContent = 'Loading engagement summary...';
       try {
         const res = await authFetch(`/admin/engagement/summary?days=${days}`);
         if (!res.ok) throw new Error('Failed to load engagement summary');
         const data = await res.json();
-        if (engagementTotalEvents) engagementTotalEvents.textContent = String(data.totalEvents ?? '-');
         if (engagementUniqueUsers) engagementUniqueUsers.textContent = String(data.uniqueUsers ?? '-');
         if (engagementUniqueSessions) engagementUniqueSessions.textContent = String(data.uniqueSessions ?? '-');
         if (engagementNewUsersCount) engagementNewUsersCount.textContent = String(data.newUsersCount ?? '-');
+        if (engagementEventsPerSession) {
+          const total = Number(data.totalEvents ?? 0);
+          const sessions = Number(data.uniqueSessions ?? 0);
+          engagementEventsPerSession.textContent = sessions ? (total / sessions).toFixed(2) : '0';
+        }
+        if (engagementClicksPerSession) {
+          const clicks = Number(data.clicks ?? 0);
+          const sessions = Number(data.uniqueSessions ?? 0);
+          engagementClicksPerSession.textContent = sessions ? (clicks / sessions).toFixed(1) : '0.0';
+        }
+        if (engagementAvgSession) {
+          engagementAvgSession.textContent = formatDurationMinutes(data.avgSessionSeconds);
+        }
+        if (engagementDayTileClicks) {
+          engagementDayTileClicks.textContent = String(data.pageClicks?.day_opened ?? 0);
+        }
+        if (engagementHourlyClicks) {
+          engagementHourlyClicks.textContent = String(data.pageClicks?.hourly_opened ?? 0);
+        }
+        if (engagementPowAlertClicks) {
+          engagementPowAlertClicks.textContent = String(data.pageClicks?.pow_alert_created ?? 0);
+        }
         renderEngagementTopEvents(data.topEvents || []);
         renderEngagementTopLocations(data.topLocations || []);
-        renderEngagementNewUsers(data.newUsers || []);
-        engagementStatus.textContent = '';
+        setStatusToast(engagementStatus, '');
       } catch (err) {
-        engagementStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(engagementStatus, err.message, true);
       }
     }
 
@@ -2590,21 +2878,147 @@
       });
     }
 
-    function renderEngagementNewUsers(users) {
-      if (!engagementNewUsersBody || !engagementNewUsersTable) return;
-      engagementNewUsersBody.innerHTML = '';
-      (users || []).forEach((user) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${user.email || ''}</td>
-          <td>${user.name || ''}</td>
-          <td>${formatDateTimeLocal(user.createdAt)}</td>
-        `;
-        engagementNewUsersBody.appendChild(tr);
+    async function loadLogs(force = false) {
+      if (hasLoadedLogs && !force) return;
+      hasLoadedLogs = true;
+      if (!logsTableBody || !logsStatus) return;
+      try {
+        const res = await authFetch('/admin/logs?limit=200');
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to load logs');
+        }
+        const data = await res.json();
+        const logs = Array.isArray(data?.logs) ? data.logs : [];
+        logsCache = logs;
+        updateLogsTypeFilter(logsCache);
+        renderLogsTable(getFilteredLogs());
+        setStatusToast(logsStatus, `Loaded ${logs.length} logs`);
+      } catch (err) {
+        setStatusToast(logsStatus, err.message, true);
+      }
+    }
+
+    function updateLogsTypeFilter(logs) {
+      if (!logsTypeFilter) return;
+      const types = Array.from(new Set(logs.map((log) => log.type).filter(Boolean))).sort();
+      const current = logsTypeFilter.value || '';
+      logsTypeFilter.innerHTML = '<option value="">All Types</option>';
+      types.forEach((type) => {
+        const option = document.createElement('option');
+        option.value = type;
+        option.textContent = type;
+        logsTypeFilter.appendChild(option);
       });
-      engagementNewUsersTable.style.display = users.length ? 'table' : 'none';
-      if (!users.length && engagementStatus) {
-        engagementStatus.textContent = 'No new users today.';
+      if (current && types.includes(current)) {
+        logsTypeFilter.value = current;
+      } else {
+        logsTypeFilter.value = '';
+      }
+    }
+
+    function getFilteredLogs() {
+      const filter = logsTypeFilter ? logsTypeFilter.value : '';
+      if (!filter) return logsCache;
+      return logsCache.filter((log) => log.type === filter);
+    }
+
+    function renderLogsTable(logs) {
+      logsTableBody.innerHTML = '';
+      if (!logs.length) {
+        logsTable.style.display = 'none';
+        return;
+      }
+      logs.forEach((log) => {
+        const tr = document.createElement('tr');
+        const meta = log.meta ? JSON.stringify(log.meta) : '';
+        tr.innerHTML = `
+          <td>${formatDateTimeLocal(log.createdAt)}</td>
+          <td>${log.type || ''}</td>
+          <td>${log.message || ''}</td>
+          <td>${meta}</td>
+        `;
+        logsTableBody.appendChild(tr);
+      });
+      logsTable.style.display = 'table';
+    }
+
+    async function loadForecastModels(force = false) {
+      if (hasLoadedModels && !force) return;
+      hasLoadedModels = true;
+      if (!modelsTableBody || !modelsStatus) return;
+      try {
+        const res = await authFetch('/admin/forecast-models');
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to load models');
+        }
+        const data = await res.json();
+        renderForecastModels(Array.isArray(data) ? data : []);
+        setStatusToast(modelsStatus, `Loaded ${Array.isArray(data) ? data.length : 0} models`);
+      } catch (err) {
+        setStatusToast(modelsStatus, err.message, true);
+      }
+    }
+
+    function renderForecastModels(models) {
+      modelsTableBody.innerHTML = '';
+      if (!models.length) {
+        modelsTable.style.display = 'none';
+        return;
+      }
+      models.forEach((model) => {
+        const tr = document.createElement('tr');
+        const code = model.code || '';
+        tr.innerHTML = `
+          <td>${code}</td>
+          <td><input type="text" value="${model.label || ''}" data-field="label" /></td>
+          <td><input type="text" value="${model.apiModelParam || ''}" data-field="apiModelParam" /></td>
+          <td><input type="number" min="1" value="${model.maxForecastDays ?? ''}" data-field="maxForecastDays" style="width:90px;" /></td>
+          <td><input type="number" min="0" value="${model.refreshHours ?? ''}" data-field="refreshHours" style="width:90px;" /></td>
+          <td><input type="checkbox" data-field="enabled" ${model.enabled ? 'checked' : ''} /></td>
+          <td>${formatDateTimeLocal(model.lastFetchedAt)}</td>
+          <td><button type="button" class="small-btn" data-action="save">Save</button></td>
+        `;
+        tr.querySelector('[data-action="save"]').addEventListener('click', () => {
+          saveForecastModel(tr, code);
+        });
+        modelsTableBody.appendChild(tr);
+      });
+      modelsTable.style.display = 'table';
+    }
+
+    async function saveForecastModel(row, code) {
+      if (!code) return;
+      const payload = {};
+      row.querySelectorAll('[data-field]').forEach((input) => {
+        const field = input.dataset.field;
+        if (!field) return;
+        if (input.type === 'checkbox') {
+          payload[field] = input.checked;
+        } else if (input.type === 'number') {
+          const value = Number(input.value);
+          if (Number.isFinite(value)) {
+            payload[field] = value;
+          }
+        } else {
+          payload[field] = input.value;
+        }
+      });
+      try {
+        const res = await authFetch(`/admin/forecast-models/${code}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to update model');
+        }
+        setStatusToast(modelsStatus, `Saved ${code}`);
+        loadForecastModels(true);
+      } catch (err) {
+        setStatusToast(modelsStatus, err.message, true);
       }
     }
 
@@ -2621,11 +3035,25 @@
       dailyEndInput.value = formatDateInput(end);
     }
 
+    if (engagementTiles) {
+      engagementTiles.addEventListener('wheel', (event) => {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+        engagementTiles.scrollLeft += event.deltaY;
+        event.preventDefault();
+      }, { passive: false });
+    }
+
     function formatDateInput(date) {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
+    }
+
+    function formatDurationMinutes(seconds) {
+      const value = Number(seconds);
+      if (!Number.isFinite(value) || value <= 0) return '0.0m';
+      return `${(value / 60).toFixed(1)}m`;
     }
 
     function computeDayOffsets() {
@@ -2636,7 +3064,7 @@
     async function loadHourlyWeather() {
       const locationId = hourlySelect.value;
       if (!locationId) {
-        hourlyStatus.textContent = 'Select a location first';
+        setStatusToast(hourlyStatus, 'Select a location first', true);
         return;
       }
       const range = computeDayOffsets();
@@ -2645,7 +3073,8 @@
       params.set('daysForward', range.daysForward);
       if (range.startEpoch != null) params.set('startDateEpoch', range.startEpoch);
       if (range.endEpoch != null) params.set('endDateEpoch', range.endEpoch);
-      hourlyStatus.textContent = 'Loading hourly data...';
+      if (hourlyModelSelect?.value) params.set('model', hourlyModelSelect.value);
+      if (hourlyElevationSelect?.value) params.set('elevation', hourlyElevationSelect.value);
       try {
         const res = await authFetch('/weather/hourly?' + params.toString());
         if (!res.ok) {
@@ -2654,10 +3083,9 @@
         }
         const data = await res.json();
         renderHourlyTable(data?.data || []);
-        hourlyStatus.textContent = `Loaded ${data?.count || 0} rows`;
+        setStatusToast(hourlyStatus, `Loaded ${data?.count || 0} rows`);
       } catch (err) {
-        hourlyStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(hourlyStatus, err.message, true);
       }
     }
 
@@ -2683,7 +3111,7 @@
     async function loadDailyWeather() {
       const locationId = dailySelect.value;
       if (!locationId) {
-        dailyStatus.textContent = 'Select a location first';
+        setStatusToast(dailyStatus, 'Select a location first', true);
         return;
       }
       const range = computeDailyOffsets();
@@ -2692,9 +3120,10 @@
       params.set('daysForward', range.daysForward);
       if (range.startEpoch != null) params.set('startDateEpoch', range.startEpoch);
       if (range.endEpoch != null) params.set('endDateEpoch', range.endEpoch);
+      if (dailyModelSelect?.value) params.set('model', dailyModelSelect.value);
+      if (dailyElevationSelect?.value) params.set('elevation', dailyElevationSelect.value);
       const mode = dailyModeSelect.value || 'overview';
       const endpoint = mode === 'segments' ? '/weather/daily/segments' : '/weather/daily/overview';
-      dailyStatus.textContent = 'Loading daily data...';
       try {
         const res = await authFetch(endpoint + '?' + params.toString());
         if (!res.ok) {
@@ -2704,10 +3133,9 @@
         const data = await res.json();
         const rows = data?.days || data?.data || [];
         renderDailyTable(rows);
-        dailyStatus.textContent = `Loaded ${rows.length} rows`;
+        setStatusToast(dailyStatus, `Loaded ${rows.length} rows`);
       } catch (err) {
-        dailyStatus.textContent = err.message;
-        showToast(err.message, true);
+        setStatusToast(dailyStatus, err.message, true);
       }
     }
 
@@ -2767,7 +3195,7 @@
 
     function handleUnauthorized() {
       showLogin();
-      authStatus.textContent = 'Session expired. Request a new link.';
+      setStatusToast(authStatus, 'Session expired. Request a new link.', true);
     }
 
     function showToast(message, isError = false) {
@@ -2782,6 +3210,14 @@
       showToast._timer = setTimeout(() => {
         toastEl.classList.remove('show');
       }, 3500);
+    }
+
+    function setStatusToast(element, message, isError = false) {
+      if (element) {
+        element.textContent = '';
+      }
+      if (!message) return;
+      showToast(message, isError);
     }
 
     function populateModalTimeZones() {
@@ -2916,8 +3352,7 @@
 
     function formatWindMph(value) {
       if (value === undefined || value === null || Number.isNaN(Number(value))) return '';
-      const mph = Number(value) * 0.621371; // km/h to mph
-      return `${mph.toFixed(1)} mph`;
+      return `${Number(value).toFixed(1)} mph`;
     }
 
     function formatDateTimeLocal(value) {
