@@ -164,18 +164,7 @@ function triggerLocationBackfill(location) {
   const startDate = formatDate(new Date(Date.now() - config.DB_BACKFILL_DAYS * config.MS_PER_DAY));
   setImmediate(async () => {
     try {
-      for (const elevation of weatherApi.listLocationElevations(location)) {
-        logAdminEvent({
-          type: 'backfill',
-          message: 'Location backfill started',
-          meta: {
-            locationId: String(location._id),
-            name: location.name,
-            elevationKey: elevation.key,
-            startDate,
-            endDate,
-          },
-        });
+      const elevationTasks = weatherApi.listLocationElevations(location).map((elevation) => (async () => {
         const results = await weatherApi.fetchLocationModels(location, {
           startDate,
           endDate,
@@ -184,13 +173,23 @@ function triggerLocationBackfill(location) {
           elevationFt: elevation.elevationFt,
         });
         (results || []).forEach((result) => {
+          logAdminEvent({
+            type: 'backfill',
+            message: 'Location backfill completed',
+            meta: {
+              name: location.name,
+              elevationKey: elevation.key,
+              model: result?.model,
+              startDate,
+              endDate,
+            },
+          });
           if (result?.requestedDays == null || result?.actualDays == null) return;
           if (result.actualDays >= result.requestedDays) return;
           logAdminEvent({
             type: 'backfill_info',
             message: 'Backfill returned fewer days than requested',
             meta: {
-              locationId: String(location._id),
               name: location.name,
               model: result.model,
               elevationKey: result.elevationKey || elevation.key,
@@ -203,18 +202,8 @@ function triggerLocationBackfill(location) {
             },
           });
         });
-        logAdminEvent({
-          type: 'backfill',
-          message: 'Location backfill completed',
-          meta: {
-            locationId: String(location._id),
-            name: location.name,
-            elevationKey: elevation.key,
-            startDate,
-            endDate,
-          },
-        });
-      }
+      })());
+      await Promise.all(elevationTasks);
       console.log(JSON.stringify({
         event: 'location_backfill_complete',
         locationId: String(location._id),
@@ -226,7 +215,6 @@ function triggerLocationBackfill(location) {
         type: 'backfill_error',
         message: err.message,
         meta: {
-          locationId: String(location._id),
           name: location.name,
           details: err?.meta,
         },

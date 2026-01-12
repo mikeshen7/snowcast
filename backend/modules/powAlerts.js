@@ -667,32 +667,12 @@ async function handleCheckAlerts(request, response) {
     return response.status(403).send({ error: 'Check Pow Now not allowed for this subscription' });
   }
   const alerts = await powAlertDb.find({ userId: user.id, active: true });
-  console.log('[pow-alerts] Check Pow Now', {
-    userId: String(user.id),
-    alertCount: alerts.length,
-  });
-  if (!alerts.length) {
-    console.log('[pow-alerts] No active alerts found for user', String(user.id));
-  }
   const results = [];
   for (const alert of alerts) {
     try {
       const result = await maybeSendAlert(alert, { manual: true });
-      console.log('[pow-alerts] Check Pow Now result', {
-        alertId: String(alert._id),
-        locationId: String(alert.locationId),
-        windowDays: alert.windowDays,
-        thresholdIn: alert.thresholdIn,
-        sent: result.sent,
-        reason: result.reason,
-        triggerDay: result.triggerDay?.dateKey,
-      });
       results.push({ id: String(alert._id), ...result });
     } catch (error) {
-      console.error('[pow-alerts] Check Pow Now error', {
-        alertId: String(alert._id),
-        error: error.message,
-      });
       results.push({ id: String(alert._id), sent: false, error: error.message });
     }
   }

@@ -35,8 +35,10 @@ const adminUsers = require('./modules/adminUsers');
 const adminRoles = require('./modules/adminRoles');
 const adminEngagement = require('./modules/adminEngagement');
 const adminLogs = require('./modules/adminLogs');
+const adminQueue = require('./modules/adminQueue');
 const adminForecastModels = require('./modules/adminForecastModels');
 const forecastModels = require('./modules/forecastModels');
+const apiQueue = require('./modules/apiQueue');
 const { createFixedWindowRateLimiter } = require('./modules/rateLimit');
 const ADMIN_ENABLED = config.backend.adminEnabled;
 
@@ -144,6 +146,7 @@ if (ADMIN_ENABLED) {
   app.put('/admin/roles/:code', requireAdminSession, (req, res, next) => adminRoles.updateRole(req, res, next));
   app.get('/admin/engagement/summary', requireAdminSession, (req, res, next) => adminEngagement.endpointSummary(req, res, next));
   app.get('/admin/logs', requireAdminSession, (req, res, next) => adminLogs.endpointListLogs(req, res, next));
+  app.get('/admin/queue', requireAdminSession, (req, res, next) => adminQueue.endpointGetQueue(req, res, next));
   app.get('/admin/forecast-models', requireAdminSession, (req, res, next) => adminForecastModels.listForecastModels(req, res, next));
   app.put('/admin/forecast-models/:code', requireAdminSession, (req, res, next) => adminForecastModels.updateForecastModel(req, res, next));
   app.get('/admin/locations/backfill', requireAdminSession, (req, res, next) => locations.endpointListBackfillLocations(req, res, next));
@@ -225,6 +228,7 @@ async function start() {
   await forecastModels.ensureForecastModelDefaults();
   await forecastModels.refreshModelCache();
   await locations.startLocationMaintenance();
+  apiQueue.start();
   setTimeout(() => {
     appMaintenance.startMaintenance();
   }, 1000);

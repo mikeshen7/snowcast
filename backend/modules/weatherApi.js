@@ -5,6 +5,8 @@ const axios = require('axios');
 const { URLSearchParams } = require('url');
 const hourlyWeatherDb = require('../models/hourlyWeatherDb');
 const forecastModels = require('./forecastModels');
+const apiQueue = require('./apiQueue');
+const { logAdminEvent } = require('./adminLogs');
 const {
   localDateTimeStringToUtcEpoch,
   getLocalPartsFromUtc,
@@ -205,50 +207,48 @@ async function fetchLocation(location, options = {}) {
   const { name } = location;
   const url = buildForecastUrl(location, { ...queryOptions, elevationKey, elevationFt });
 
-  const maxAttempts = 3;
-  const baseDelayMs = 2000;
-  let lastError = null;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const response = await axios.get(url, { timeout: 10000 });
-      const { data } = response;
-      await upsertWeatherDocs(location, name, data, model, elevationKey, elevationFt);
-      const { actualDays, actualStartDate, actualEndDate } = summarizeReturnedDays(data);
-      const requestedDays = computeRequestedDays(queryOptions);
-      return {
-        model: model || 'auto',
-        elevationKey,
-        elevationFt,
-        requestedDays,
-        requestedStartDate: queryOptions.startDate || null,
-        requestedEndDate: queryOptions.endDate || null,
-        actualDays,
-        actualStartDate,
-        actualEndDate,
-      };
-    } catch (error) {
-      const status = error?.response?.status;
-      const responseData = error?.response?.data;
-      error.meta = {
-        url,
-        model: model || 'auto',
-        elevationKey,
-        elevationFt,
-        status,
-        responseData,
+  try {
+    const response = await apiQueue.enqueueHttp({
+      url,
+      timeoutMs: 10000,
+      meta: {
+        type: 'weather_api',
         context,
-      };
-      lastError = error;
-      const isLastAttempt = attempt === maxAttempts;
-      const waitMs = baseDelayMs * attempt;
-      if (isLastAttempt) {
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
-    }
-  }
-  if (lastError) {
-    throw lastError;
+        locationId: String(location._id),
+        name,
+        model: model || 'auto',
+        elevationKey,
+        elevationFt,
+      },
+    });
+    const { data } = response;
+    await upsertWeatherDocs(location, name, data, model, elevationKey, elevationFt);
+    const { actualDays, actualStartDate, actualEndDate } = summarizeReturnedDays(data);
+    const requestedDays = computeRequestedDays(queryOptions);
+    return {
+      model: model || 'auto',
+      elevationKey,
+      elevationFt,
+      requestedDays,
+      requestedStartDate: queryOptions.startDate || null,
+      requestedEndDate: queryOptions.endDate || null,
+      actualDays,
+      actualStartDate,
+      actualEndDate,
+    };
+  } catch (error) {
+    const status = error?.response?.status;
+    const responseData = error?.response?.data;
+    error.meta = {
+      url,
+      model: model || 'auto',
+      elevationKey,
+      elevationFt,
+      status,
+      responseData,
+      context,
+    };
+    throw error;
   }
 }
 
@@ -259,14 +259,24 @@ async function fetchLocationModels(location, options = {}) {
     : options.model
       ? [options.model]
       : FORECAST_MODELS;
-  const results = [];
-  for (const model of models) {
-    const result = await fetchLocation(location, { ...options, model });
-    if (result) {
-      results.push(result);
+  const tasks = models.map((model) => {
+    if (options.context === 'backfill') {
+      logAdminEvent({
+        type: 'backfill',
+        message: 'Backfill location started',
+        meta: {
+          name: location.name,
+          model,
+          elevationKey: options.elevationKey || DEFAULT_ELEVATION_KEY,
+          startDate: options.startDate,
+          endDate: options.endDate,
+        },
+      });
     }
-  }
-  return results;
+    return fetchLocation(location, { ...options, model });
+  });
+  const results = await Promise.all(tasks);
+  return results.filter(Boolean);
 }
 
 // upsertWeatherDocs transforms the API payload into Mongo upsert operations.

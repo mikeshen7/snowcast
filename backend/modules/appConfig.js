@@ -7,6 +7,7 @@ const defaults = {
   MS_PER_DAY: 24 * 60 * 60 * 1000,
   WEATHER_API_MAX_DAYS_BACK: 60,
   WEATHER_API_MAX_DAYS_FORWARD: 16,
+  WEATHER_API_CALLS_PER_MINUTE: 10,
   DB_BACKFILL_DAYS: 90,
   DB_FETCH_INTERVAL_HOURS: 8,
   DB_CLEAN_INTERVAL_HOURS: 24,
@@ -32,6 +33,10 @@ const DEFAULT_CONFIG = {
   WEATHER_API_MAX_DAYS_FORWARD: {
     value: defaults.WEATHER_API_MAX_DAYS_FORWARD,
     description: 'Maximum future days allowed from provider.'
+  },
+  WEATHER_API_CALLS_PER_MINUTE: {
+    value: defaults.WEATHER_API_CALLS_PER_MINUTE,
+    description: 'Maximum weather API calls per minute (set <=0 for unlimited).'
   },
   DB_BACKFILL_DAYS: {
     value: defaults.DB_BACKFILL_DAYS,
@@ -163,6 +168,7 @@ function buildValuesFromCache() {
     MS_PER_DAY: defaults.MS_PER_DAY,
     WEATHER_API_MAX_DAYS_BACK: readValue('WEATHER_API_MAX_DAYS_BACK', defaults.WEATHER_API_MAX_DAYS_BACK),
     WEATHER_API_MAX_DAYS_FORWARD: readValue('WEATHER_API_MAX_DAYS_FORWARD', defaults.WEATHER_API_MAX_DAYS_FORWARD),
+    WEATHER_API_CALLS_PER_MINUTE: readValue('WEATHER_API_CALLS_PER_MINUTE', defaults.WEATHER_API_CALLS_PER_MINUTE),
     DB_BACKFILL_DAYS: readValue('DB_BACKFILL_DAYS', defaults.DB_BACKFILL_DAYS),
     DB_FETCH_INTERVAL_HOURS: readValue('DB_FETCH_INTERVAL_HOURS', defaults.DB_FETCH_INTERVAL_HOURS),
     DB_CLEAN_INTERVAL_HOURS: readValue('DB_CLEAN_INTERVAL_HOURS', defaults.DB_CLEAN_INTERVAL_HOURS),

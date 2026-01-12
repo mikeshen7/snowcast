@@ -157,9 +157,12 @@ async function redeemCode(request, response) {
   if (maxUses > 0 && redeemedBy.length >= maxUses) {
     return response.status(403).send({ error: 'Code usage limit reached' });
   }
-  const currentRoles = Array.isArray(record.roles) ? record.roles : [];
-  if (!currentRoles.includes('admin')) {
-    record.roles = ['premium'];
+  if (record.isAdmin) {
+    return response.status(200).send({
+      ok: true,
+      role: 'admin',
+      subscriptionExpiresAt: record.subscriptionExpiresAt,
+    });
   }
   const baseDate = record.subscriptionExpiresAt && record.subscriptionExpiresAt > new Date()
     ? record.subscriptionExpiresAt
@@ -170,7 +173,7 @@ async function redeemCode(request, response) {
   await record.save();
   return response.status(200).send({
     ok: true,
-    roles: record.roles,
+    role: 'premium',
     subscriptionExpiresAt: record.subscriptionExpiresAt,
   });
 }

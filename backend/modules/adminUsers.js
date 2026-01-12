@@ -4,8 +4,7 @@
 const adminUserDb = require('../models/adminUserDb');
 const engagementEventDb = require('../models/engagementEventDb');
 const appConfig = require('./appConfig');
-const { ADMIN_ROLE, FREE_ROLE, PREMIUM_ROLE } = require('./adminAuth');
-const ALLOWED_ROLES = new Set([ADMIN_ROLE, FREE_ROLE, PREMIUM_ROLE]);
+const { FREE_ROLE, resolveUserRole } = require('./userRole');
 const { config } = require('../config');
 const BOOTSTRAP_EMAIL = config.backend.adminEmail;
 
@@ -164,6 +163,7 @@ async function listUsers(request, response, next) {
     });
 
     const users = await adminUserDb.find().sort({ createdAt: -1 }).lean();
+    const nowMs = Date.now();
     // enriched helper.
     const enriched = users.map((user) => {
       const activeDays = activeDaysMap.get(String(user._id)) || 0;
@@ -183,8 +183,15 @@ async function listUsers(request, response, next) {
       const clicksPerSession = sessionStats.sessionCount
         ? clicks / sessionStats.sessionCount
         : 0;
+      const hasAdmin = Boolean(user.isAdmin);
+      const expiryMs = user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).getTime() : null;
+      const isExpired = !hasAdmin && expiryMs != null && !Number.isNaN(expiryMs) && expiryMs < nowMs;
+      const effectiveRole = resolveUserRole(user);
       return {
         ...user,
+        isAdmin: hasAdmin,
+        effectiveRole,
+        subscriptionActive: hasAdmin ? true : !isExpired,
         engagement,
         activeDays,
         activeDaysPercent,
@@ -206,28 +213,25 @@ async function listUsers(request, response, next) {
 // Create User.
 async function createUser(request, response, next) {
   try {
-    const { email, name, roles, subscriptionExpiresAt } = request.body || {};
+    const { email, name, isAdmin, subscriptionExpiresAt } = request.body || {};
     if (!email) {
       return response.status(400).send('email is required');
     }
     if (!name || !String(name).trim()) {
       return response.status(400).send('name is required');
     }
-    if (Array.isArray(roles) && roles.length > 1) {
-      return response.status(400).send('Only one role is allowed');
-    }
     const normalizedEmail = String(email).trim().toLowerCase();
     const existing = await adminUserDb.findOne({ email: normalizedEmail });
     if (existing) {
       return response.status(400).send('User already exists');
     }
-    const parsedRoles = parseRoles(roles);
-    const nextRoles = parsedRoles.length ? parsedRoles : [FREE_ROLE];
-    const nextExpiry = nextRoles.includes(ADMIN_ROLE) ? null : parseSubscriptionExpiry(subscriptionExpiresAt);
+    const adminFlag = parseBoolean(isAdmin);
+    const nextExpiry = adminFlag ? null : parseSubscriptionExpiry(subscriptionExpiresAt);
     const user = await adminUserDb.create({
       email: normalizedEmail,
       name: String(name).trim(),
-      roles: nextRoles,
+      roles: [FREE_ROLE],
+      isAdmin: adminFlag,
       subscriptionExpiresAt: nextExpiry,
       status: 'active',
     });
@@ -242,7 +246,7 @@ async function createUser(request, response, next) {
 async function updateUser(request, response, next) {
   try {
     const { id } = request.params;
-    const { name, roles, status, subscriptionExpiresAt } = request.body || {};
+    const { name, status, isAdmin, subscriptionExpiresAt } = request.body || {};
     const update = {};
     if (name !== undefined) {
       const trimmed = String(name || '').trim();
@@ -251,12 +255,8 @@ async function updateUser(request, response, next) {
       }
       update.name = trimmed;
     }
-    if (roles !== undefined) {
-      if (Array.isArray(roles) && roles.length > 1) {
-        return response.status(400).send('Only one role is allowed');
-      }
-      const parsedRoles = parseRoles(roles);
-      update.roles = parsedRoles.length ? parsedRoles : [FREE_ROLE];
+    if (isAdmin !== undefined) {
+      update.isAdmin = parseBoolean(isAdmin);
     }
     if (status === 'active' || status === 'suspended') {
       update.status = status;
@@ -264,7 +264,7 @@ async function updateUser(request, response, next) {
     if (subscriptionExpiresAt !== undefined) {
       update.subscriptionExpiresAt = parseSubscriptionExpiry(subscriptionExpiresAt);
     }
-    if (update.roles && update.roles.includes(ADMIN_ROLE)) {
+    if (update.isAdmin) {
       update.subscriptionExpiresAt = null;
     }
     const existing = await adminUserDb.findById(id);
@@ -305,19 +305,23 @@ module.exports = {
   deleteUser,
 };
 
-// parse Roles helper.
-function parseRoles(roles) {
-  const list = Array.isArray(roles) ? roles : roles ? [roles] : [];
-  return list
-    .map((r) => String(r).trim())
-    .filter((r) => ALLOWED_ROLES.has(r))
-    .slice(0, 1);
+// parse Boolean helper.
+function parseBoolean(value) {
+  if (value === true || value === false) return value;
+  if (value === null || value === undefined) return false;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+  return false;
 }
 
 // parse Subscription Expiry helper.
 function parseSubscriptionExpiry(value) {
   if (!value) return null;
-  const parsed = new Date(value);
+  const trimmed = String(value).trim();
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T12:00:00Z`)
+    : new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
 }

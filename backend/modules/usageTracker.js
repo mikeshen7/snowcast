@@ -151,7 +151,7 @@ async function logClientAccess(client, request) {
 // notify Admins Of Suspicious Access helper.
 async function notifyAdminsOfSuspiciousAccess(client, hosts) {
   try {
-    const admins = await adminUserDb.find({ status: 'active', roles: { $in: ['admin'] } }).lean();
+    const admins = await adminUserDb.find({ status: 'active', isAdmin: true }).lean();
     // recipients helper.
     const recipients = admins.map((u) => u.email).filter(Boolean);
     if (!recipients.length) return;

@@ -3,6 +3,11 @@
 
 const adminLogDb = require('../models/adminLogDb');
 
+// escape Regex helper.
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Log Admin Event.
 async function logAdminEvent({ type, message, meta } = {}) {
   if (!type) return;
@@ -23,9 +28,13 @@ async function endpointListLogs(request, response, next) {
     const limit = Math.min(Number(request.query.limit) || 200, 500);
     const page = Math.max(Number(request.query.page) || 1, 1);
     const type = String(request.query.type || '').trim();
+    const messageQuery = String(request.query.message || '').trim();
     const filter = {};
     if (type) {
       filter.type = type;
+    }
+    if (messageQuery) {
+      filter.message = { $regex: escapeRegex(messageQuery), $options: 'i' };
     }
     const startDate = String(request.query.startDate || '').trim();
     const endDate = String(request.query.endDate || '').trim();
@@ -48,6 +57,7 @@ async function endpointListLogs(request, response, next) {
       }
     }
     const total = await adminLogDb.countDocuments(filter);
+    const allTypes = await adminLogDb.distinct('type');
     const logs = await adminLogDb
       .find(filter)
       .sort({ createdAt: -1 })
@@ -57,6 +67,7 @@ async function endpointListLogs(request, response, next) {
     return response.status(200).send({
       total,
       page,
+      types: (allTypes || []).filter(Boolean).sort(),
       logs: logs.map((log) => ({
         id: log._id,
         type: log.type,

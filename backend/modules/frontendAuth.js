@@ -14,8 +14,12 @@ const {
   getPowAlertLimits,
   getCheckPowAccess,
   getForecastWindows,
+  getFavoriteLimitForRole,
+  getPowAlertLimitForRole,
   normalizeRole,
 } = require('./roleConfig');
+const { resolveUserRole } = require('./userRole');
+const powAlertDb = require('../models/powAlertDb');
 
 const COOKIE_NAME = 'frontendSession';
 const { config } = require('../config');
@@ -237,11 +241,10 @@ async function handleSessionStatus(request, response) {
       roleForecast,
     });
   }
-  // normalized Roles helper.
-  const normalizedRoles = (user.roles || []).map((role) => normalizeRole(role));
+  const effectiveRole = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free';
   return response.status(200).send({
     authenticated: true,
-    user: { email: user.email, roles: normalizedRoles },
+    user: { email: user.email, roles: [effectiveRole] },
     roleLabels,
     roleLimits,
     roleHourly,
@@ -269,6 +272,8 @@ async function getFrontendUserFromRequest(request) {
     return null;
   }
   const effectiveRole = resolveUserRole(user);
+  const normalizedRole = normalizeRole(effectiveRole);
+  await trimUserLimits(user, normalizedRole);
   return {
     id: String(user._id),
     email: user.email,
@@ -276,19 +281,29 @@ async function getFrontendUserFromRequest(request) {
   };
 }
 
-// Resolve User Role.
-function resolveUserRole(user) {
-  const rawRole = normalizeRole(Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free');
-  if (rawRole === 'admin') {
-    return 'admin';
+// trim User Limits enforces role caps after expiration.
+async function trimUserLimits(user, role) {
+  if (!user || !user._id) return;
+  const favoriteLimit = getFavoriteLimitForRole(role);
+  if (favoriteLimit >= 0 && Array.isArray(user.favoriteLocations) && user.favoriteLocations.length > favoriteLimit) {
+    user.favoriteLocations = user.favoriteLocations.slice(0, favoriteLimit);
+    await user.save();
   }
-  if (rawRole === 'premium') {
-    if (user.subscriptionExpiresAt && user.subscriptionExpiresAt > new Date()) {
-      return 'premium';
+  const powAlertLimit = getPowAlertLimitForRole(role);
+  if (powAlertLimit >= 0) {
+    const count = await powAlertDb.countDocuments({ userId: user._id });
+    if (count > powAlertLimit) {
+      const excess = await powAlertDb
+        .find({ userId: user._id })
+        .sort({ createdAt: -1 })
+        .skip(powAlertLimit)
+        .select('_id');
+      if (excess.length) {
+        const ids = excess.map((alert) => alert._id);
+        await powAlertDb.deleteMany({ _id: { $in: ids } });
+      }
     }
-    return 'free';
   }
-  return rawRole === 'free' ? 'free' : 'free';
 }
 
 module.exports = {

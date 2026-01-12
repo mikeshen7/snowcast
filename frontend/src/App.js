@@ -125,7 +125,10 @@ function getEngagementSessionId() {
 function resolveRole(user) {
   if (!user) return 'guest';
   const role = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free';
-  return normalizeRole(role);
+  const normalized = normalizeRole(role);
+  return normalized === 'admin' || normalized === 'premium' || normalized === 'free'
+    ? normalized
+    : 'free';
 }
 
 function formatTemp(value, units) {
@@ -1020,8 +1023,11 @@ function App() {
     setDiscountStatus('');
     try {
       const payload = await redeemDiscountCode(code);
-      if (payload?.roles) {
-        setUser((prev) => (prev ? { ...prev, roles: payload.roles } : prev));
+      if (payload?.role) {
+        setUser((prev) => (prev ? { ...prev, roles: [payload.role] } : prev));
+      }
+      if (payload?.subscriptionExpiresAt) {
+        setSubscriptionExpiresAt(String(payload.subscriptionExpiresAt));
       }
       setDiscountStatus('Discount applied.');
       setDiscountCode('');

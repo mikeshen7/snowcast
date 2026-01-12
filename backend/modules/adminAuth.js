@@ -15,10 +15,7 @@ const SESSION_SECRET = config.backend.sessionSecret;
 const BACKEND_URL = config.backend.url;
 const COOKIE_SECURE = config.backend.cookieSecure;
 const BOOTSTRAP_EMAIL = config.backend.adminEmail;
-const ADMIN_ROLE = 'admin';
-const FREE_ROLE = 'free';
-const PREMIUM_ROLE = 'premium';
-const ALLOWED_ROLES = new Set([ADMIN_ROLE, FREE_ROLE, PREMIUM_ROLE]);
+const { ADMIN_ROLE, isAdminUser } = require('./userRole');
 
 // Get Session Ttl Minutes.
 function getSessionTtlMinutes() {
@@ -74,9 +71,8 @@ function createSessionToken(user) {
   }
   const sessionTtlMinutes = getSessionTtlMinutes();
   // normalized Roles helper.
-  const normalizedRoles = (user.roles || []).filter((r) => ALLOWED_ROLES.has(r)).slice(0, 1);
   return jwt.sign(
-    { uid: String(user._id), email: user.email, roles: normalizedRoles },
+    { uid: String(user._id), email: user.email, isAdmin: Boolean(user.isAdmin) },
     SESSION_SECRET,
     { expiresIn: `${sessionTtlMinutes}m` }
   );
@@ -110,12 +106,12 @@ async function handleRequestMagicLink(request, response) {
       email,
       name: 'Owner',
       status: 'active',
-      roles: [ADMIN_ROLE],
+      isAdmin: true,
     });
     console.log('Bootstrap admin user created for', email);
   }
   if (user && BOOTSTRAP_EMAIL && email === BOOTSTRAP_EMAIL) {
-    user.roles = [ADMIN_ROLE];
+    user.isAdmin = true;
     user.status = 'active';
     if (!user.name) {
       user.name = 'Owner';
@@ -126,7 +122,7 @@ async function handleRequestMagicLink(request, response) {
     // Avoid email enumeration; respond success even if user not found.
     return response.status(200).send({ ok: true });
   }
-  if (!(user.roles || []).includes(ADMIN_ROLE)) {
+  if (!isAdminUser(user)) {
     return response.status(200).send({ ok: true });
   }
 
@@ -223,9 +219,7 @@ function requireRole(allowedRoles) {
     if (!request.adminUser) {
       return response.status(403).send('Forbidden');
     }
-    const roles = request.adminUser.roles || [];
-    // Check has Role.
-    const hasRole = roles.some((r) => allowed.includes(r));
+    const hasRole = request.adminUser.roles?.some((r) => allowed.includes(r));
     if (!hasRole) {
       return response.status(403).send('Forbidden');
     }
@@ -243,12 +237,12 @@ async function handleSessionStatus(request, response) {
     response.clearCookie(COOKIE_NAME);
     return response.status(403).send({ authenticated: false });
   }
-  const isAdmin = (adminUser.roles || []).includes(ADMIN_ROLE);
   return response.status(200).send({
     authenticated: true,
     user: {
       email: adminUser.email,
-      roles: adminUser.roles || [],
+      roles: isAdminUser(adminUser) ? [ADMIN_ROLE] : [],
+      isAdmin: isAdminUser(adminUser),
     },
   });
 }
@@ -273,16 +267,14 @@ async function getAdminUserFromRequest(request) {
   if (!user || user.status !== 'active') {
     return null;
   }
-  if (!(user.roles || []).includes(ADMIN_ROLE)) {
+  if (!isAdminUser(user)) {
     return null;
   }
-  // normalized Roles helper.
-  const normalizedRoles = (user.roles || []).filter((r) => ALLOWED_ROLES.has(r)).slice(0, 1);
-  const isAdmin = normalizedRoles.includes(ADMIN_ROLE);
   return {
     id: String(user._id),
     email: user.email,
-    roles: normalizedRoles,
+    roles: [ADMIN_ROLE],
+    isAdmin: true,
   };
 }
 
@@ -295,6 +287,4 @@ module.exports = {
   handleLogout,
   getAdminUserFromRequest,
   ADMIN_ROLE,
-  FREE_ROLE,
-  PREMIUM_ROLE,
 };

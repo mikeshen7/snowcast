@@ -138,6 +138,7 @@
       <button class="tab-btn" data-tab="apiKeysTab">API Keys</button>
       <button class="tab-btn" data-tab="engagementTab">Engagement</button>
       <button class="tab-btn" data-tab="logsTab">Logs</button>
+      <button class="tab-btn" data-tab="queueTab">Queue</button>
       <button class="tab-btn" data-tab="modelsTab">Models</button>
       <button class="tab-btn" data-tab="configTab">Config</button>
     </div>
@@ -442,6 +443,10 @@
             <option value="">All Types</option>
           </select>
         </label>
+        <label>
+          Message:
+          <input type="text" id="logsMessageFilter" placeholder="Search message" />
+        </label>
         <div class="pagination-controls" style="margin-left:auto; display:flex; align-items:center; gap:0.5rem;">
           <label>
             Per page:
@@ -468,6 +473,31 @@
         <tbody></tbody>
       </table>
       <div id="logsStatus" class="status hidden"></div>
+    </div>
+
+    <div id="queueTab" class="tab-panel">
+      <h2>API Queue</h2>
+      <div class="flex-row">
+        <button id="loadQueueBtn">Refresh Queue</button>
+        <div class="status" id="queueSummary" style="margin-left:auto;"></div>
+      </div>
+      <table id="queueTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Started</th>
+            <th>Attempts</th>
+            <th>Context</th>
+            <th>Location</th>
+            <th>Model</th>
+            <th>Elevation</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="queueStatus" class="status hidden"></div>
     </div>
 
     <div id="modelsTab" class="tab-panel">
@@ -666,12 +696,9 @@
         <input type="hidden" id="adminUserId" />
         <label>Email<input type="email" id="adminUserEmail" required placeholder="admin@example.com" /></label>
         <label>Name<input type="text" id="adminUserName" placeholder="Required" /></label>
-        <label>Role
-          <select id="adminUserRoleSelect">
-            <option value="free">Free</option>
-            <option value="premium">Premium</option>
-            <option value="admin">Admin</option>
-          </select>
+        <label style="display:flex;align-items:center;gap:0.5rem;">
+          <input type="checkbox" id="adminUserIsAdmin" />
+          Admin
         </label>
         <label>Status
           <select id="adminUserStatus">
@@ -751,6 +778,7 @@
     let hasLoadedApiClients = false;
     let hasLoadedEngagement = false;
     let hasLoadedLogs = false;
+    let hasLoadedQueue = false;
     let hasLoadedModels = false;
     const authGate = document.getElementById('authGate');
     const appContent = document.getElementById('appContent');
@@ -794,6 +822,9 @@
       }
       if (tabId === 'logsTab' && !hasLoadedLogs) {
         loadLogs();
+      }
+      if (tabId === 'queueTab' && !hasLoadedQueue) {
+        loadQueue();
       }
       if (tabId === 'modelsTab' && !hasLoadedModels) {
         loadForecastModels();
@@ -929,23 +960,7 @@
       });
     }
 
-    function updateRoleSelectOptions() {
-      if (!adminUserRoleSelect) return;
-      const current = adminUserRoleSelect.value;
-      adminUserRoleSelect.innerHTML = '';
-      const options = [
-        { value: 'free', label: formatRoleLabel('free') },
-        { value: 'premium', label: formatRoleLabel('premium') },
-        { value: 'admin', label: formatRoleLabel('admin') },
-      ];
-      options.forEach((opt) => {
-        const option = document.createElement('option');
-        option.value = opt.value;
-        option.textContent = opt.label;
-        adminUserRoleSelect.appendChild(option);
-      });
-      adminUserRoleSelect.value = current || 'free';
-    }
+    function updateRoleSelectOptions() {}
 
     function applyRoleLabelsFromConfig(roles) {
       const labelMap = { ...DEFAULT_ROLE_LABELS };
@@ -1101,8 +1116,7 @@
 
     function setAuthenticated(user) {
       sessionUser = user;
-      const roles = Array.isArray(user?.roles) ? user.roles : [];
-      const isBackendAdmin = roles.includes('admin');
+      const isBackendAdmin = Boolean(user?.isAdmin);
       authGate.classList.add('hidden');
       appContent.classList.remove('hidden');
       const statusText = sessionStatus?.querySelector('span');
@@ -1341,12 +1355,18 @@
     const logsStatus = document.getElementById('logsStatus');
     const loadLogsBtn = document.getElementById('loadLogsBtn');
     const logsTypeFilter = document.getElementById('logsTypeFilter');
+    const logsMessageFilter = document.getElementById('logsMessageFilter');
     const logsStartDate = document.getElementById('logsStartDate');
     const logsEndDate = document.getElementById('logsEndDate');
     const logsPageSize = document.getElementById('logsPageSize');
     const logsPrevPage = document.getElementById('logsPrevPage');
     const logsNextPage = document.getElementById('logsNextPage');
     const logsPageInfo = document.getElementById('logsPageInfo');
+    const queueTable = document.getElementById('queueTable');
+    const queueBody = queueTable ? queueTable.querySelector('tbody') : null;
+    const queueStatus = document.getElementById('queueStatus');
+    const queueSummary = document.getElementById('queueSummary');
+    const loadQueueBtn = document.getElementById('loadQueueBtn');
     const modelsTable = document.getElementById('modelsTable');
     const modelsTableBody = modelsTable ? modelsTable.querySelector('tbody') : null;
     const modelsStatus = document.getElementById('modelsStatus');
@@ -1377,7 +1397,7 @@
     const adminUserId = document.getElementById('adminUserId');
     const adminUserEmail = document.getElementById('adminUserEmail');
     const adminUserName = document.getElementById('adminUserName');
-    const adminUserRoleSelect = document.getElementById('adminUserRoleSelect');
+    const adminUserIsAdmin = document.getElementById('adminUserIsAdmin');
     const adminUserStatusSelect = document.getElementById('adminUserStatus');
     const adminUserSubscriptionExpires = document.getElementById('adminUserSubscriptionExpires');
     const adminUserSubmitBtn = document.getElementById('adminUserSubmitBtn');
@@ -1613,10 +1633,24 @@
     if (hourlyModelSelect) hourlyModelSelect.addEventListener('change', loadHourlyWeather);
     if (hourlyElevationSelect) hourlyElevationSelect.addEventListener('change', loadHourlyWeather);
     if (loadLogsBtn) loadLogsBtn.addEventListener('click', () => loadLogs(true));
+    if (loadQueueBtn) loadQueueBtn.addEventListener('click', () => loadQueue(true));
     if (logsTypeFilter) {
       logsTypeFilter.addEventListener('change', () => {
         logsPage = 1;
         loadLogs(true);
+      });
+    }
+    if (logsMessageFilter) {
+      logsMessageFilter.addEventListener('change', () => {
+        logsPage = 1;
+        loadLogs(true);
+      });
+      logsMessageFilter.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          logsPage = 1;
+          loadLogs(true);
+        }
       });
     }
     if (logsStartDate) {
@@ -1670,9 +1704,9 @@
     if (adminUserForm) {
       adminUserForm.addEventListener('submit', submitAdminUser);
     }
-    if (adminUserRoleSelect) {
-      adminUserRoleSelect.addEventListener('change', () => {
-        toggleSubscriptionExpiryInput(adminUserRoleSelect.value);
+    if (adminUserIsAdmin) {
+      adminUserIsAdmin.addEventListener('change', () => {
+        toggleSubscriptionExpiryInput(adminUserIsAdmin.checked);
       });
     }
     if (adminUserRefreshBtn) {
@@ -1960,10 +1994,10 @@
       if (adminUserForm) adminUserForm.reset();
       if (adminUserId) adminUserId.value = '';
       if (adminUserEmail) adminUserEmail.disabled = false;
-      if (adminUserRoleSelect) adminUserRoleSelect.value = 'free';
+      if (adminUserIsAdmin) adminUserIsAdmin.checked = false;
       if (adminUserStatusSelect) adminUserStatusSelect.value = 'active';
       if (adminUserSubscriptionExpires) adminUserSubscriptionExpires.value = '';
-      toggleSubscriptionExpiryInput(adminUserRoleSelect?.value);
+      toggleSubscriptionExpiryInput(adminUserIsAdmin?.checked);
       if (adminUsersStatus) adminUsersStatus.textContent = '';
       openModal(adminUserModal, '#adminUserEmail');
     }
@@ -2554,9 +2588,8 @@
       if (!adminUsersBody) return;
       adminUsersBody.innerHTML = '';
       (users || []).forEach((user) => {
-        const roleText = Array.isArray(user.roles) && user.roles.length
-          ? user.roles.map((role) => formatRoleLabel(role)).join(', ')
-          : '';
+        const effectiveRole = user.effectiveRole || (Array.isArray(user.roles) ? user.roles[0] : '');
+        const roleText = effectiveRole ? formatRoleLabel(effectiveRole) : '';
         const engagement = user.engagement || {};
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -2566,7 +2599,7 @@
           <td>${Number.isFinite(user.activeDaysPercent) ? `${user.activeDaysPercent}%` : '0%'}</td>
           <td>${Number.isFinite(user.clickStats?.clicksPerSession) ? user.clickStats.clicksPerSession.toFixed(1) : '0.0'}</td>
           <td>${formatDurationMinutes(user.sessionStats?.avgSessionSeconds)}</td>
-          <td>${Array.isArray(user.roles) && user.roles.includes('admin') ? 'Never' : formatDateOnly(user.subscriptionExpiresAt)}</td>
+          <td>${effectiveRole === 'admin' ? 'Never' : formatDateOnly(user.subscriptionExpiresAt)}</td>
           <td>${user.status || ''}</td>
           <td>${formatDateTimeLocal(user.lastLoginAt)}</td>
           <td>${formatDateTimeLocal(user.createdAt)}</td>
@@ -2603,7 +2636,7 @@
       const editingId = adminUserId?.value;
       const email = adminUserEmail?.value.trim();
       const name = adminUserName?.value.trim();
-      const roles = adminUserRoleSelect ? [adminUserRoleSelect.value] : ['free'];
+      const isAdmin = Boolean(adminUserIsAdmin?.checked);
       const status = adminUserStatusSelect ? adminUserStatusSelect.value : 'active';
       const subscriptionExpiresAt = adminUserSubscriptionExpires?.value || '';
       if (!email) {
@@ -2615,8 +2648,8 @@
         const endpoint = editingId ? `/admin/users/${editingId}` : '/admin/users';
         const method = editingId ? 'PUT' : 'POST';
         const payload = editingId
-          ? buildAdminUpdatePayload({ name, roles, status, subscriptionExpiresAt })
-          : { email, name, roles, subscriptionExpiresAt };
+          ? buildAdminUpdatePayload({ name, isAdmin, status, subscriptionExpiresAt })
+          : { email, name, isAdmin, subscriptionExpiresAt };
         const res = await authFetch(endpoint, {
           method,
           headers: { 'Content-Type': 'application/json' },
@@ -2663,8 +2696,8 @@
         adminUserEmail.disabled = true;
       }
       if (adminUserName) adminUserName.value = user.name || '';
-      if (adminUserRoleSelect) {
-        adminUserRoleSelect.value = Array.isArray(user.roles) && user.roles.length ? user.roles[0] : 'free';
+      if (adminUserIsAdmin) {
+        adminUserIsAdmin.checked = Boolean(user.isAdmin);
       }
       if (adminUserStatusSelect) {
         adminUserStatusSelect.value = user.status || 'active';
@@ -2672,7 +2705,7 @@
       if (adminUserSubscriptionExpires) {
         adminUserSubscriptionExpires.value = formatDateInputValue(user.subscriptionExpiresAt);
       }
-      toggleSubscriptionExpiryInput(adminUserRoleSelect?.value);
+      toggleSubscriptionExpiryInput(adminUserIsAdmin?.checked);
       if (adminUserModalTitle) adminUserModalTitle.textContent = 'Edit User';
       if (adminUserSubmitBtn) adminUserSubmitBtn.textContent = 'Save User';
       setStatusToast(adminUsersStatus, `Editing ${user.email || ''}`);
@@ -2683,15 +2716,14 @@
       closeAdminUserModal();
     }
 
-    function buildAdminUpdatePayload({ name, roles, status, subscriptionExpiresAt }) {
-      return { name, roles, status, subscriptionExpiresAt };
+    function buildAdminUpdatePayload({ name, isAdmin, status, subscriptionExpiresAt }) {
+      return { name, isAdmin, status, subscriptionExpiresAt };
     }
 
-    function toggleSubscriptionExpiryInput(role) {
+    function toggleSubscriptionExpiryInput(isAdmin) {
       if (!adminUserSubscriptionExpires) return;
-      const isAdminRole = role === 'admin';
-      adminUserSubscriptionExpires.disabled = isAdminRole;
-      if (isAdminRole) {
+      adminUserSubscriptionExpires.disabled = Boolean(isAdmin);
+      if (isAdmin) {
         adminUserSubscriptionExpires.value = '';
         adminUserSubscriptionExpires.placeholder = 'Never';
       } else {
@@ -2949,6 +2981,7 @@
         params.set('limit', String(pageSize));
         params.set('page', String(logsPage));
         if (logsTypeFilter?.value) params.set('type', logsTypeFilter.value);
+        if (logsMessageFilter?.value) params.set('message', logsMessageFilter.value);
         if (logsStartDate?.value) params.set('startDate', logsStartDate.value);
         if (logsEndDate?.value) params.set('endDate', logsEndDate.value);
         const res = await authFetch('/admin/logs?' + params.toString());
@@ -2963,7 +2996,7 @@
           return loadLogs(true);
         }
         logsTotal = Number(data?.total) || 0;
-        updateLogsTypeFilter(logs);
+        updateLogsTypeFilter(data?.types || []);
         renderLogsTable(logs);
         updateLogsPagination(pageSize, logs.length);
         setStatusToast(logsStatus, `Loaded ${logs.length} logs`);
@@ -2972,9 +3005,8 @@
       }
     }
 
-    function updateLogsTypeFilter(logs) {
+    function updateLogsTypeFilter(types) {
       if (!logsTypeFilter) return;
-      const types = Array.from(new Set(logs.map((log) => log.type).filter(Boolean))).sort();
       const current = logsTypeFilter.value || '';
       logsTypeFilter.innerHTML = '<option value="">All Types</option>';
       types.forEach((type) => {
@@ -3021,6 +3053,59 @@
         logsTableBody.appendChild(tr);
       });
       logsTable.style.display = 'table';
+    }
+
+    async function loadQueue(force = false) {
+      if (hasLoadedQueue && !force) return;
+      hasLoadedQueue = true;
+      if (!queueBody || !queueStatus || !queueSummary) return;
+      try {
+        const res = await authFetch('/admin/queue');
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to load queue');
+        }
+        const data = await res.json();
+        renderQueueTable(data);
+        const pending = Number(data.pendingCount ?? 0);
+        const active = data.activeJob ? 1 : 0;
+        queueSummary.textContent = `Pending: ${pending} • Active: ${active} • Calls/min: ${data.callsPerMinute ?? 0}`;
+        setStatusToast(queueStatus, pending || active ? 'Queue loaded' : 'Queue is empty');
+      } catch (err) {
+        setStatusToast(queueStatus, err.message, true);
+      }
+    }
+
+    function renderQueueTable(data) {
+      queueBody.innerHTML = '';
+      const rows = [];
+      if (data?.activeJob) {
+        rows.push({ ...data.activeJob, status: 'Active' });
+      }
+      (data?.queue || []).forEach((job) => {
+        rows.push({ ...job, status: 'Pending' });
+      });
+      if (!rows.length) {
+        queueTable.style.display = 'none';
+        return;
+      }
+      rows.forEach((job) => {
+        const meta = job.meta || {};
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${job.id ?? ''}</td>
+          <td>${job.status}</td>
+          <td>${formatDateTimeLocal(job.createdAt)}</td>
+          <td>${formatDateTimeLocal(job.startedAt)}</td>
+          <td>${job.attempts ?? 0}</td>
+          <td>${meta.context || ''}</td>
+          <td>${meta.name || meta.locationId || ''}</td>
+          <td>${meta.model || ''}</td>
+          <td>${meta.elevationKey || ''}</td>
+        `;
+        queueBody.appendChild(tr);
+      });
+      queueTable.style.display = 'table';
     }
 
     async function loadForecastModels(force = false) {
@@ -3450,16 +3535,16 @@
       if (Number.isNaN(dt.getTime())) {
         return '-';
       }
-      return dt.toLocaleDateString();
+      return dt.toLocaleDateString(undefined, { timeZone: 'UTC' });
     }
 
     function formatDateInputValue(value) {
       if (!value) return '';
       const dt = new Date(value);
       if (Number.isNaN(dt.getTime())) return '';
-      const year = dt.getFullYear();
-      const month = String(dt.getMonth() + 1).padStart(2, '0');
-      const day = String(dt.getDate()).padStart(2, '0');
+      const year = dt.getUTCFullYear();
+      const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(dt.getUTCDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     }
 
