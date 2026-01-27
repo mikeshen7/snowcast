@@ -73,12 +73,12 @@ const DEFAULT_FORECAST_MODEL_OPTIONS = [
 
 const MODEL_DESCRIPTION_MAP = {
   median: 'Median of available models.',
-  gfs: 'Long-range global model.',
-  gfs_seamless: 'Long-range global model.',
+  gfs: 'Long-range global.',
+  gfs_seamless: 'Long-range global.',
   nbm: 'Blend of national models.',
   ncep_nbm_conus: 'Blend of national models.',
-  hrrr: 'High-res short-range model.',
-  gfs_hrrr: 'High-res short-range model.',
+  hrrr: 'Short-range high-res.',
+  gfs_hrrr: 'Short-range high-res.',
 };
 const DEFAULT_FORECAST_ELEVATION = 'mid';
 const FORECAST_ELEVATION_OPTIONS = [
@@ -771,6 +771,17 @@ function App() {
       window.localStorage.setItem(ELEVATION_STORAGE_KEY, activeElevation);
     }
   }, [activeElevation]);
+
+  useEffect(() => {
+    if (hourlyModalOpen) {
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = previousOverflow;
+      };
+    }
+    return undefined;
+  }, [hourlyModalOpen]);
 
 
   useEffect(() => {
@@ -1580,286 +1591,288 @@ function App() {
                     ✕
                   </button>
                 </div>
-                <div className="modal-controls">
-                  <div className="modal-control">
-                    <div className="calendar-label-row">
-                      <span className="modal-model-label">Model</span>
-                      <span className="model-info" tabIndex={0} aria-label="Model descriptions">
-                        ⓘ
-                        <span className="model-tooltip" role="tooltip">
-                          {forecastModelOptions.map((option) => (
-                            <span key={`model-tip-detail-${option.value}`} className="model-tooltip-item">
-                              <strong>{option.label}:</strong> {getModelDescription(option.value)}
-                            </span>
-                          ))}
+                <div className="day-modal-body">
+                  <div className="modal-controls">
+                    <div className="modal-control">
+                      <div className="calendar-label-row">
+                        <span className="modal-model-label">Model</span>
+                        <span className="model-info" tabIndex={0} aria-label="Model descriptions">
+                          ⓘ
+                          <span className="model-tooltip" role="tooltip">
+                            {forecastModelOptions.map((option) => (
+                              <span key={`model-tip-detail-${option.value}`} className="model-tooltip-item">
+                                <strong>{option.label}:</strong> {getModelDescription(option.value)}
+                              </span>
+                            ))}
+                          </span>
                         </span>
-                      </span>
+                      </div>
+                      <select
+                        className="modal-model-select"
+                        value={activeModel}
+                        onChange={(event) => {
+                          const nextModel = normalizeForecastModel(event.target.value);
+                          applyModelSelection(nextModel);
+                          if (hourlyModalDate) {
+                            loadCombinedModal(hourlyModalDate, nextModel, activeElevation);
+                          }
+                        }}
+                        aria-label="Forecast model"
+                      >
+                        {forecastModelOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <select
-                      className="modal-model-select"
-                      value={activeModel}
-                      onChange={(event) => {
-                        const nextModel = normalizeForecastModel(event.target.value);
-                        applyModelSelection(nextModel);
-                        if (hourlyModalDate) {
-                          loadCombinedModal(hourlyModalDate, nextModel, activeElevation);
-                        }
-                      }}
-                      aria-label="Forecast model"
-                    >
-                      {forecastModelOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="modal-control">
-                    <span className="modal-model-label">Elevation</span>
-                    <select
-                      className="modal-model-select"
-                      value={activeElevation}
-                      onChange={(event) => {
-                        const nextElevation = normalizeForecastElevation(event.target.value);
-                        applyElevationSelection(nextElevation);
-                        if (hourlyModalDate) {
-                          loadCombinedModal(hourlyModalDate, activeModel, nextElevation);
-                        }
-                      }}
-                      aria-label="Forecast elevation"
-                    >
-                      {FORECAST_ELEVATION_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="modal-control">
-                    <span className="modal-model-label">Chart</span>
-                    <div className="modal-checkboxes" role="group" aria-label="Chart metrics">
+                    <div className="modal-control">
+                      <span className="modal-model-label">Elevation</span>
+                      <select
+                        className="modal-model-select"
+                        value={activeElevation}
+                        onChange={(event) => {
+                          const nextElevation = normalizeForecastElevation(event.target.value);
+                          applyElevationSelection(nextElevation);
+                          if (hourlyModalDate) {
+                            loadCombinedModal(hourlyModalDate, activeModel, nextElevation);
+                          }
+                        }}
+                        aria-label="Forecast elevation"
+                      >
+                        {FORECAST_ELEVATION_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="modal-control">
+                      <span className="modal-model-label">Chart</span>
+                      <div className="modal-checkboxes" role="group" aria-label="Chart metrics">
                         {[
                           { value: 'temp', label: 'Temp' },
                           { value: 'snow', label: 'Snow' },
                           { value: 'rain', label: 'Rain' },
                           { value: 'wind', label: 'Wind' },
                         ].map((metric) => (
-                        <label key={metric.value} className="modal-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={hourlyChartMetrics.includes(metric.value)}
-                            onChange={(event) => {
-                              setHourlyChartMetrics((current) => {
-                                if (event.target.checked) {
-                                  return current.includes(metric.value) ? current : [...current, metric.value];
-                                }
-                                return current.filter((item) => item !== metric.value);
-                              });
-                            }}
-                          />
-                          <span>{metric.label}</span>
-                        </label>
-                      ))}
+                          <label key={metric.value} className="modal-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={hourlyChartMetrics.includes(metric.value)}
+                              onChange={(event) => {
+                                setHourlyChartMetrics((current) => {
+                                  if (event.target.checked) {
+                                    return current.includes(metric.value) ? current : [...current, metric.value];
+                                  }
+                                  return current.filter((item) => item !== metric.value);
+                                });
+                              }}
+                            />
+                            <span>{metric.label}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-                {hourlyModalLoading ? (
-                  <div className="day-modal-loading">Loading hourly…</div>
-                ) : hourlyModalData.length ? (
-                  <div className="hourly-forecast">
-                    {(() => {
-                      const hours = hourlyModalData;
-                      const segments = hourlyModalSegments;
-                      const showTemp = hourlyChartMetrics.includes('temp');
-                      const showSnow = hourlyChartMetrics.includes('snow');
-                      const showRain = hourlyChartMetrics.includes('rain');
-                      const showWind = hourlyChartMetrics.includes('wind');
-                      const chartValues = hours.map((hour) => {
-                        const snowValue = showSnow ? (hour.snow || 0) : 0;
-                        const rainValue = showRain ? (hour.rain || 0) : 0;
-                        return Math.max(snowValue, rainValue);
-                      });
-                      const maxSnow = Math.max(...chartValues, 0.5);
-                      const { minGrid, gridRange } = getTempScale(hours);
-                      const chartHeight = 140;
-                      const plotTop = 10;
-                      const plotBottom = chartHeight - 16;
-                      const plotHeight = plotBottom - plotTop;
+                  {hourlyModalLoading ? (
+                    <div className="day-modal-loading">Loading hourly…</div>
+                  ) : hourlyModalData.length ? (
+                    <div className="hourly-forecast">
+                      {(() => {
+                        const hours = hourlyModalData;
+                        const segments = hourlyModalSegments;
+                        const showTemp = hourlyChartMetrics.includes('temp');
+                        const showSnow = hourlyChartMetrics.includes('snow');
+                        const showRain = hourlyChartMetrics.includes('rain');
+                        const showWind = hourlyChartMetrics.includes('wind');
+                        const chartValues = hours.map((hour) => {
+                          const snowValue = showSnow ? (hour.snow || 0) : 0;
+                          const rainValue = showRain ? (hour.rain || 0) : 0;
+                          return Math.max(snowValue, rainValue);
+                        });
+                        const maxSnow = Math.max(...chartValues, 0.5);
+                        const { minGrid, gridRange } = getTempScale(hours);
+                        const chartHeight = 140;
+                        const plotTop = 10;
+                        const plotBottom = chartHeight - 16;
+                        const plotHeight = plotBottom - plotTop;
 
-                      return (
-                        <div className="hourly-table">
-                          <div className="hourly-scroll">
-                            <div className="hourly-grid" style={{ '--hour-count': hours.length }}>
-                              <div className="hourly-grid-row segment-row">
-                                <div className="row-label">Blocks</div>
-                                {segments.length ? (
-                                  segments.map((segment) => {
-                                    const span = Math.max(1, (segment.endHour ?? 0) - (segment.startHour ?? 0));
-                                    const iconSrc = segment.representativeHour?.icon
-                                      ? getIconSrc(segment.representativeHour.icon)
-                                      : null;
-                                    const isSegmentPow = (segment.snowTotal ?? 0) >= 1;
-                                    const isSegmentWindy =
-                                      Number.isFinite(segment.maxWindspeed) && segment.maxWindspeed >= WINDY_THRESHOLD_MPH;
-                                    return (
-                                      <div
-                                        key={`segment-${segment.id}`}
-                                        className="segment-block"
-                                        style={{ gridColumn: `span ${span}` }}
-                                      >
-                                        <div className="segment-name">{segment.label}</div>
-                                        <div className="segment-icon-row">
-                                          <div className="segment-pill-slot">
-                                            {isSegmentPow ? <span className="segment-pill pow-pill">Pow</span> : null}
+                        return (
+                          <div className="hourly-table">
+                            <div className="hourly-scroll">
+                              <div className="hourly-grid" style={{ '--hour-count': hours.length }}>
+                                <div className="hourly-grid-row segment-row">
+                                  <div className="row-label">Blocks</div>
+                                  {segments.length ? (
+                                    segments.map((segment) => {
+                                      const span = Math.max(1, (segment.endHour ?? 0) - (segment.startHour ?? 0));
+                                      const iconSrc = segment.representativeHour?.icon
+                                        ? getIconSrc(segment.representativeHour.icon)
+                                        : null;
+                                      const isSegmentPow = (segment.snowTotal ?? 0) >= 1;
+                                      const isSegmentWindy =
+                                        Number.isFinite(segment.maxWindspeed) && segment.maxWindspeed >= WINDY_THRESHOLD_MPH;
+                                      return (
+                                        <div
+                                          key={`segment-${segment.id}`}
+                                          className="segment-block"
+                                          style={{ gridColumn: `span ${span}` }}
+                                        >
+                                          <div className="segment-name">{segment.label}</div>
+                                          <div className="segment-icon-row">
+                                            <div className="segment-pill-slot">
+                                              {isSegmentPow ? <span className="segment-pill pow-pill">Pow</span> : null}
+                                            </div>
+                                            {iconSrc ? <img src={iconSrc} alt="" /> : <div className="icon-placeholder" />}
+                                            <div className="segment-pill-slot">
+                                              {isSegmentWindy ? <span className="segment-pill windy-pill">Windy</span> : null}
+                                            </div>
                                           </div>
-                                          {iconSrc ? <img src={iconSrc} alt="" /> : <div className="icon-placeholder" />}
-                                          <div className="segment-pill-slot">
-                                            {isSegmentWindy ? <span className="segment-pill windy-pill">Windy</span> : null}
+                                          <div className="segment-metric">
+                                            <span className="temp-high">{formatTemp(segment.maxTemp, units)}</span>
+                                            <span className="temp-low">{formatTemp(segment.minTemp, units)}</span>
                                           </div>
+                                          <div className="segment-sub">
+                                            Snow {formatPrecipValue(segment.snowTotal, units)} {units === 'metric' ? 'cm' : 'in'}
+                                          </div>
+                                          <div className="segment-sub">Wind {formatWind(segment.maxWindspeed, units)}</div>
                                         </div>
-                                        <div className="segment-metric">
-                                          <span className="temp-high">{formatTemp(segment.maxTemp, units)}</span>
-                                          <span className="temp-low">{formatTemp(segment.minTemp, units)}</span>
-                                        </div>
-                                        <div className="segment-sub">
-                                          Snow {formatPrecipValue(segment.snowTotal, units)} {units === 'metric' ? 'cm' : 'in'}
-                                        </div>
-                                        <div className="segment-sub">Wind {formatWind(segment.maxWindspeed, units)}</div>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="segment-block empty" style={{ gridColumn: `span ${hours.length}` }}>
-                                    No segment data
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="hourly-grid-row time-row">
-                                <div className="row-label">Time</div>
-                                {hours.map((hour) => {
-                                  const time = new Date(hour.dateTimeEpoch).toLocaleTimeString(undefined, {
-                                    hour: 'numeric',
-                                    timeZone: hourlyModalTimezone || undefined,
-                                  });
-                                  return (
-                                    <div key={`time-${hour.dateTimeEpoch}`} className="row-cell">
-                                      {time}
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="segment-block empty" style={{ gridColumn: `span ${hours.length}` }}>
+                                      No segment data
                                     </div>
-                                  );
-                                })}
-                              </div>
+                                  )}
+                                </div>
 
-                              <div className="hourly-grid-row icon-row">
-                                <div className="row-label">Sky</div>
-                                {hours.map((hour) => {
-                                  const iconSrc = hour.icon ? getIconSrc(hour.icon) : null;
-                                  return (
-                                    <div key={`icon-${hour.dateTimeEpoch}`} className="row-cell icon-cell">
-                                      {iconSrc ? <img src={iconSrc} alt="hour icon" /> : <div className="icon-placeholder" />}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              <div className="hourly-grid-row precip-type-row">
-                                <div className="row-label">Type</div>
-                                {hours.map((hour) => {
-                                  const type = Array.isArray(hour.precipType) ? hour.precipType[0] : hour.precipType;
-                                  return (
-                                    <div key={`ptype-${hour.dateTimeEpoch}`} className="row-cell">
-                                      {type || '--'}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              <div className="hourly-grid-row chart-row">
-                                <div className="row-label">Chart</div>
-                                <div className="chart-cells" ref={hourlyChartRef} style={{ gridColumn: `span ${hours.length}` }}>
-                                  <div className="chart-legend">
-                                    <span className={`legend-item ${showTemp ? 'active' : ''}`}>
-                                      <span className="legend-swatch temp" />
-                                      Temp
-                                    </span>
-                                    <span className={`legend-item ${showSnow ? 'active' : ''}`}>
-                                      <span className="legend-swatch snow" />
-                                      Snow
-                                    </span>
-                                    <span className={`legend-item ${showRain ? 'active' : ''}`}>
-                                      <span className="legend-swatch rain" />
-                                      Rain
-                                    </span>
-                                    <span className={`legend-item ${showWind ? 'active' : ''}`}>
-                                      <span className="legend-swatch wind" />
-                                      Wind
-                                    </span>
-                                  </div>
+                                <div className="hourly-grid-row time-row">
+                                  <div className="row-label">Time</div>
                                   {hours.map((hour) => {
-                                    const snowRatio = (hour.snow || 0) / maxSnow;
-                                    const rainRatio = (hour.rain || 0) / maxSnow;
-                                    const tempValue = hour.temp ?? minGrid;
-                                    const tempRatio = (tempValue - minGrid) / gridRange;
-                                    const tempY = plotTop + (1 - tempRatio) * plotHeight;
+                                    const time = new Date(hour.dateTimeEpoch).toLocaleTimeString(undefined, {
+                                      hour: 'numeric',
+                                      timeZone: hourlyModalTimezone || undefined,
+                                    });
                                     return (
-                                      <div key={`snow-${hour.dateTimeEpoch}`} className="chart-cell">
-                                        {showSnow || showRain ? (
-                                          <div className={`bar-group ${showSnow && showRain ? 'dual' : ''}`}>
-                                            {showSnow ? (
-                                              <div className="snow-bar" style={{ height: `${snowRatio * 100}%` }} />
-                                            ) : null}
-                                            {showRain ? (
-                                              <div className="rain-bar" style={{ height: `${rainRatio * 100}%` }} />
-                                            ) : null}
-                                          </div>
-                                        ) : null}
-                                      {showTemp ? (
-                                        <div className="temp-label" style={{ top: `${tempY}px` }}>
-                                          {formatTemp(hour.temp, units)}
-                                        </div>
-                                      ) : null}
+                                      <div key={`time-${hour.dateTimeEpoch}`} className="row-cell">
+                                        {time}
                                       </div>
                                     );
                                   })}
-                                  {showTemp || showWind ? <canvas ref={hourlyCanvasRef} className="temp-line-canvas" /> : null}
                                 </div>
-                              </div>
 
-                              <div className="hourly-grid-row snow-row">
-                                <div className="row-label">Snow ({units === 'metric' ? 'cm' : 'in'})</div>
-                                {hours.map((hour) => (
-                                  <div key={`snow-${hour.dateTimeEpoch}`} className="row-cell">
-                                    {formatPrecipValue(hour.snow, units)}
-                                  </div>
-                                ))}
-                              </div>
+                                <div className="hourly-grid-row icon-row">
+                                  <div className="row-label">Sky</div>
+                                  {hours.map((hour) => {
+                                    const iconSrc = hour.icon ? getIconSrc(hour.icon) : null;
+                                    return (
+                                      <div key={`icon-${hour.dateTimeEpoch}`} className="row-cell icon-cell">
+                                        {iconSrc ? <img src={iconSrc} alt="hour icon" /> : <div className="icon-placeholder" />}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
 
-                              <div className="hourly-grid-row rain-row">
-                                <div className="row-label">Rain ({units === 'metric' ? 'cm' : 'in'})</div>
-                                {hours.map((hour) => (
-                                  <div key={`rain-${hour.dateTimeEpoch}`} className="row-cell">
-                                    {formatPrecipValue(hour.rain, units)}
-                                  </div>
-                                ))}
-                              </div>
+                                <div className="hourly-grid-row precip-type-row">
+                                  <div className="row-label">Type</div>
+                                  {hours.map((hour) => {
+                                    const type = Array.isArray(hour.precipType) ? hour.precipType[0] : hour.precipType;
+                                    return (
+                                      <div key={`ptype-${hour.dateTimeEpoch}`} className="row-cell">
+                                        {type || '--'}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
 
-                              <div className="hourly-grid-row wind-row">
-                                <div className="row-label">Wind ({units === 'imperial' ? 'mph' : 'km/h'})</div>
-                                {hours.map((hour) => (
-                                  <div key={`wind-${hour.dateTimeEpoch}`} className="row-cell">
-                                    {formatWindValue(hour.windspeed, units)}
+                                <div className="hourly-grid-row chart-row">
+                                  <div className="row-label">Chart</div>
+                                  <div className="chart-cells" ref={hourlyChartRef} style={{ gridColumn: `span ${hours.length}` }}>
+                                    <div className="chart-legend">
+                                      <span className={`legend-item ${showTemp ? 'active' : ''}`}>
+                                        <span className="legend-swatch temp" />
+                                        Temp
+                                      </span>
+                                      <span className={`legend-item ${showSnow ? 'active' : ''}`}>
+                                        <span className="legend-swatch snow" />
+                                        Snow
+                                      </span>
+                                      <span className={`legend-item ${showRain ? 'active' : ''}`}>
+                                        <span className="legend-swatch rain" />
+                                        Rain
+                                      </span>
+                                      <span className={`legend-item ${showWind ? 'active' : ''}`}>
+                                        <span className="legend-swatch wind" />
+                                        Wind
+                                      </span>
+                                    </div>
+                                    {hours.map((hour) => {
+                                      const snowRatio = (hour.snow || 0) / maxSnow;
+                                      const rainRatio = (hour.rain || 0) / maxSnow;
+                                      const tempValue = hour.temp ?? minGrid;
+                                      const tempRatio = (tempValue - minGrid) / gridRange;
+                                      const tempY = plotTop + (1 - tempRatio) * plotHeight;
+                                      return (
+                                        <div key={`snow-${hour.dateTimeEpoch}`} className="chart-cell">
+                                          {showSnow || showRain ? (
+                                            <div className={`bar-group ${showSnow && showRain ? 'dual' : ''}`}>
+                                              {showSnow ? (
+                                                <div className="snow-bar" style={{ height: `${snowRatio * 100}%` }} />
+                                              ) : null}
+                                              {showRain ? (
+                                                <div className="rain-bar" style={{ height: `${rainRatio * 100}%` }} />
+                                              ) : null}
+                                            </div>
+                                          ) : null}
+                                          {showTemp ? (
+                                            <div className="temp-label" style={{ top: `${tempY}px` }}>
+                                              {formatTemp(hour.temp, units)}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })}
+                                    {showTemp || showWind ? <canvas ref={hourlyCanvasRef} className="temp-line-canvas" /> : null}
                                   </div>
-                                ))}
+                                </div>
+
+                                <div className="hourly-grid-row snow-row">
+                                  <div className="row-label">Snow ({units === 'metric' ? 'cm' : 'in'})</div>
+                                  {hours.map((hour) => (
+                                    <div key={`snow-${hour.dateTimeEpoch}`} className="row-cell">
+                                      {formatPrecipValue(hour.snow, units)}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="hourly-grid-row rain-row">
+                                  <div className="row-label">Rain ({units === 'metric' ? 'cm' : 'in'})</div>
+                                  {hours.map((hour) => (
+                                    <div key={`rain-${hour.dateTimeEpoch}`} className="row-cell">
+                                      {formatPrecipValue(hour.rain, units)}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="hourly-grid-row wind-row">
+                                  <div className="row-label">Wind ({units === 'imperial' ? 'mph' : 'km/h'})</div>
+                                  {hours.map((hour) => (
+                                    <div key={`wind-${hour.dateTimeEpoch}`} className="row-cell">
+                                      {formatWindValue(hour.windspeed, units)}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <div className="day-modal-empty">No {activeModel.toUpperCase()} data available.</div>
-                )}
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="day-modal-empty">No {activeModel.toUpperCase()} data available.</div>
+                  )}
+                </div>
               </div>
             </div>
           ) : null}

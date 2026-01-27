@@ -776,7 +776,7 @@ select option {
 }
 
 .day-modal {
-  width: min(1100px, 96vw);
+  width: min(1320px, 98vw);
   background: var(--snow-50);
   border-radius: 18px;
   padding: 18px;
@@ -784,6 +784,33 @@ select option {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: 90vh;
+  overflow: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.day-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+  min-height: 0;
+  flex: 1;
+  padding-right: 4px;
+}
+
+@media (max-width: 900px) {
+  .day-modal {
+    max-height: 90vh;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .day-modal {
+    max-height: 86vh;
+  }
 }
 
 .day-modal-header {
@@ -1093,6 +1120,8 @@ select option {
 
 .hourly-scroll {
   overflow: auto;
+  max-height: calc(90vh - 260px);
+  padding-bottom: 12px;
 }
 
 .hourly-grid {
