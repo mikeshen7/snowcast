@@ -66,10 +66,20 @@ const CM_PER_INCH = 2.54;
 const DEFAULT_FORECAST_MODEL = 'median';
 const DEFAULT_FORECAST_MODEL_OPTIONS = [
   { value: 'median', label: 'Median' },
-  { value: 'gfs', label: 'NOAA Global' },
   { value: 'nbm', label: 'NOAA Blend' },
-  { value: 'hrrr', label: 'NOAA Hi Res' },
+  { value: 'gfs', label: 'NOAA Global' },
+  { value: 'hrrr', label: 'NOAA HRRR' },
 ];
+
+const MODEL_DESCRIPTION_MAP = {
+  median: 'Median of available models.',
+  gfs: 'Long-range global model.',
+  gfs_seamless: 'Long-range global model.',
+  nbm: 'Blend of national models.',
+  ncep_nbm_conus: 'Blend of national models.',
+  hrrr: 'High-res short-range model.',
+  gfs_hrrr: 'High-res short-range model.',
+};
 const DEFAULT_FORECAST_ELEVATION = 'mid';
 const FORECAST_ELEVATION_OPTIONS = [
   { value: 'top', label: 'Top' },
@@ -107,6 +117,11 @@ function normalizeForecastModel(value, options = DEFAULT_FORECAST_MODEL_OPTIONS)
   if (next === 'blend') return DEFAULT_FORECAST_MODEL;
   const allowed = new Set(options.map((option) => option.value));
   return allowed.has(next) ? next : DEFAULT_FORECAST_MODEL;
+}
+
+function getModelDescription(value) {
+  if (!value) return 'Forecast model description unavailable.';
+  return MODEL_DESCRIPTION_MAP[value] || 'Forecast model description unavailable.';
 }
 
 function normalizeForecastElevation(value) {
@@ -371,7 +386,7 @@ function App() {
 
   const resortSelectWidth = useMemo(() => {
     const longest = locations.reduce((max, loc) => Math.max(max, (loc?.name || '').length), 0);
-    const widthCh = Math.max(longest, 12) + 2;
+    const widthCh = Math.max(longest, 12) + 4;
     return `${widthCh}ch`;
   }, [locations]);
 
@@ -417,6 +432,7 @@ function App() {
       .then((models) => {
         if (!isMounted) return;
         const apiModels = Array.isArray(models) ? models : [];
+        const priorityOrder = ['median', 'nbm', 'gfs', 'hrrr'];
         const merged = [
           { value: DEFAULT_FORECAST_MODEL, label: 'Median' },
           ...apiModels
@@ -425,7 +441,15 @@ function App() {
               value: String(model.code).toLowerCase(),
               label: String(model.label || model.code),
             })),
-        ];
+        ].sort((a, b) => {
+          const aIndex = priorityOrder.indexOf(a.value);
+          const bIndex = priorityOrder.indexOf(b.value);
+          if (aIndex !== -1 || bIndex !== -1) {
+            return (aIndex === -1 ? priorityOrder.length : aIndex)
+              - (bIndex === -1 ? priorityOrder.length : bIndex);
+          }
+          return a.label.localeCompare(b.label);
+        });
         setForecastModelOptions(merged);
         const currentActive = activeModelRef.current;
         const currentPreferred = forecastModelRef.current;
@@ -773,7 +797,9 @@ function App() {
 
   useEffect(() => {
     if (!hourlyModalOpen || !hourlyModalData.length) return;
-    if (!hourlyChartMetrics.includes('temp')) return;
+    const showTemp = hourlyChartMetrics.includes('temp');
+    const showWind = hourlyChartMetrics.includes('wind');
+    if (!showTemp && !showWind) return;
     const canvas = hourlyCanvasRef.current;
     const container = hourlyChartRef.current;
     if (!canvas || !container) return;
@@ -793,55 +819,87 @@ function App() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const { minGrid, maxGrid, gridRange, step } = getTempScale(hourlyModalData);
-
     const plotTop = 10;
     const plotBottom = height - 16;
     const plotHeight = plotBottom - plotTop;
     const colWidth = width / hourlyModalData.length;
 
-    ctx.strokeStyle = 'rgba(13, 27, 42, 0.12)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 4]);
+    if (showTemp) {
+      const { minGrid, maxGrid, gridRange, step } = getTempScale(hourlyModalData);
 
-    for (let t = minGrid; t <= maxGrid + 0.001; t += step) {
-      const y = plotTop + ((maxGrid - t) / gridRange) * plotHeight;
+      ctx.strokeStyle = 'rgba(13, 27, 42, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+
+      for (let t = minGrid; t <= maxGrid + 0.001; t += step) {
+        const y = plotTop + ((maxGrid - t) / gridRange) * plotHeight;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(47, 154, 102, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
+      hourlyModalData.forEach((hour, index) => {
+        const tempValue = hour.temp ?? minGrid;
+        const ratio = (tempValue - minGrid) / gridRange;
+        const x = (index + 0.5) * colWidth;
+        const y = plotTop + (1 - ratio) * plotHeight;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
       ctx.stroke();
+
+      ctx.fillStyle = 'rgba(47, 154, 102, 0.95)';
+      hourlyModalData.forEach((hour, index) => {
+        const tempValue = hour.temp ?? minGrid;
+        const ratio = (tempValue - minGrid) / gridRange;
+        const x = (index + 0.5) * colWidth;
+        const y = plotTop + (1 - ratio) * plotHeight;
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
 
-    ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(47, 154, 102, 0.95)';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    hourlyModalData.forEach((hour, index) => {
-      const tempValue = hour.temp ?? minGrid;
-      const ratio = (tempValue - minGrid) / gridRange;
-      const x = (index + 0.5) * colWidth;
-      const y = plotTop + (1 - ratio) * plotHeight;
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    });
-    ctx.stroke();
+    if (showWind) {
+      const minWind = 0;
+      const maxDefaultWind = units === 'metric' ? 15 * WIND_KMH_PER_MPH : 15;
+      const windValues = hourlyModalData.map((hour) =>
+        units === 'metric' ? (hour.windspeed || 0) * WIND_KMH_PER_MPH : hour.windspeed || 0
+      );
+      const maxWind = Math.max(...windValues, maxDefaultWind);
+      const windRange = Math.max(maxWind - minWind, 1);
 
-    ctx.fillStyle = 'rgba(47, 154, 102, 0.95)';
-    hourlyModalData.forEach((hour, index) => {
-      const tempValue = hour.temp ?? minGrid;
-      const ratio = (tempValue - minGrid) / gridRange;
-      const x = (index + 0.5) * colWidth;
-      const y = plotTop + (1 - ratio) * plotHeight;
+      ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = 'rgba(223, 98, 44, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }, [hourlyModalData, hourlyModalOpen, hourlyChartMetrics]);
+      windValues.forEach((value, index) => {
+        const rawRatio = (value - minWind) / windRange;
+        const ratio = Math.max(0, Math.min(1, rawRatio));
+        const x = (index + 0.5) * colWidth;
+        const y = plotTop + (1 - ratio) * plotHeight;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }, [hourlyModalData, hourlyModalOpen, hourlyChartMetrics, units]);
 
   const handleRequestLink = async (event) => {
     event.preventDefault();
@@ -1287,7 +1345,7 @@ function App() {
     setHourlyModalData([]);
     setHourlyModalLoading(true);
     setHourlyModalSegments([]);
-    setHourlyChartMetrics(['temp', 'snow', 'rain']);
+                    setHourlyChartMetrics(['temp', 'snow', 'rain', 'wind']);
 
     try {
       const [segments, hourlyPayload] = await Promise.all([
@@ -1524,7 +1582,19 @@ function App() {
                 </div>
                 <div className="modal-controls">
                   <div className="modal-control">
-                    <span className="modal-model-label">Model</span>
+                    <div className="calendar-label-row">
+                      <span className="modal-model-label">Model</span>
+                      <span className="model-info" tabIndex={0} aria-label="Model descriptions">
+                        ⓘ
+                        <span className="model-tooltip" role="tooltip">
+                          {forecastModelOptions.map((option) => (
+                            <span key={`model-tip-detail-${option.value}`} className="model-tooltip-item">
+                              <strong>{option.label}:</strong> {getModelDescription(option.value)}
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+                    </div>
                     <select
                       className="modal-model-select"
                       value={activeModel}
@@ -1568,11 +1638,12 @@ function App() {
                   <div className="modal-control">
                     <span className="modal-model-label">Chart</span>
                     <div className="modal-checkboxes" role="group" aria-label="Chart metrics">
-                      {[
-                        { value: 'temp', label: 'Temp' },
-                        { value: 'snow', label: 'Snow' },
-                        { value: 'rain', label: 'Rain' },
-                      ].map((metric) => (
+                        {[
+                          { value: 'temp', label: 'Temp' },
+                          { value: 'snow', label: 'Snow' },
+                          { value: 'rain', label: 'Rain' },
+                          { value: 'wind', label: 'Wind' },
+                        ].map((metric) => (
                         <label key={metric.value} className="modal-checkbox">
                           <input
                             type="checkbox"
@@ -1602,6 +1673,7 @@ function App() {
                       const showTemp = hourlyChartMetrics.includes('temp');
                       const showSnow = hourlyChartMetrics.includes('snow');
                       const showRain = hourlyChartMetrics.includes('rain');
+                      const showWind = hourlyChartMetrics.includes('wind');
                       const chartValues = hours.map((hour) => {
                         const snowValue = showSnow ? (hour.snow || 0) : 0;
                         const rainValue = showRain ? (hour.rain || 0) : 0;
@@ -1626,6 +1698,9 @@ function App() {
                                     const iconSrc = segment.representativeHour?.icon
                                       ? getIconSrc(segment.representativeHour.icon)
                                       : null;
+                                    const isSegmentPow = (segment.snowTotal ?? 0) >= 1;
+                                    const isSegmentWindy =
+                                      Number.isFinite(segment.maxWindspeed) && segment.maxWindspeed >= WINDY_THRESHOLD_MPH;
                                     return (
                                       <div
                                         key={`segment-${segment.id}`}
@@ -1633,7 +1708,15 @@ function App() {
                                         style={{ gridColumn: `span ${span}` }}
                                       >
                                         <div className="segment-name">{segment.label}</div>
-                                        {iconSrc ? <img src={iconSrc} alt="" /> : <div className="icon-placeholder" />}
+                                        <div className="segment-icon-row">
+                                          <div className="segment-pill-slot">
+                                            {isSegmentPow ? <span className="segment-pill pow-pill">Pow</span> : null}
+                                          </div>
+                                          {iconSrc ? <img src={iconSrc} alt="" /> : <div className="icon-placeholder" />}
+                                          <div className="segment-pill-slot">
+                                            {isSegmentWindy ? <span className="segment-pill windy-pill">Windy</span> : null}
+                                          </div>
+                                        </div>
                                         <div className="segment-metric">
                                           <span className="temp-high">{formatTemp(segment.maxTemp, units)}</span>
                                           <span className="temp-low">{formatTemp(segment.minTemp, units)}</span>
@@ -1641,7 +1724,7 @@ function App() {
                                         <div className="segment-sub">
                                           Snow {formatPrecipValue(segment.snowTotal, units)} {units === 'metric' ? 'cm' : 'in'}
                                         </div>
-                                        <div className="segment-sub">Wind {formatWind(segment.avgWindspeed, units)}</div>
+                                        <div className="segment-sub">Wind {formatWind(segment.maxWindspeed, units)}</div>
                                       </div>
                                     );
                                   })
@@ -1694,6 +1777,24 @@ function App() {
                               <div className="hourly-grid-row chart-row">
                                 <div className="row-label">Chart</div>
                                 <div className="chart-cells" ref={hourlyChartRef} style={{ gridColumn: `span ${hours.length}` }}>
+                                  <div className="chart-legend">
+                                    <span className={`legend-item ${showTemp ? 'active' : ''}`}>
+                                      <span className="legend-swatch temp" />
+                                      Temp
+                                    </span>
+                                    <span className={`legend-item ${showSnow ? 'active' : ''}`}>
+                                      <span className="legend-swatch snow" />
+                                      Snow
+                                    </span>
+                                    <span className={`legend-item ${showRain ? 'active' : ''}`}>
+                                      <span className="legend-swatch rain" />
+                                      Rain
+                                    </span>
+                                    <span className={`legend-item ${showWind ? 'active' : ''}`}>
+                                      <span className="legend-swatch wind" />
+                                      Wind
+                                    </span>
+                                  </div>
                                   {hours.map((hour) => {
                                     const snowRatio = (hour.snow || 0) / maxSnow;
                                     const rainRatio = (hour.rain || 0) / maxSnow;
@@ -1712,15 +1813,15 @@ function App() {
                                             ) : null}
                                           </div>
                                         ) : null}
-                                        {showTemp ? (
-                                          <div className="temp-label" style={{ top: `${tempY}px` }}>
-                                            {formatTemp(hour.temp, units)}
-                                          </div>
-                                        ) : null}
+                                      {showTemp ? (
+                                        <div className="temp-label" style={{ top: `${tempY}px` }}>
+                                          {formatTemp(hour.temp, units)}
+                                        </div>
+                                      ) : null}
                                       </div>
                                     );
                                   })}
-                                  {showTemp ? <canvas ref={hourlyCanvasRef} className="temp-line-canvas" /> : null}
+                                  {showTemp || showWind ? <canvas ref={hourlyCanvasRef} className="temp-line-canvas" /> : null}
                                 </div>
                               </div>
 
@@ -1771,7 +1872,19 @@ function App() {
                 </span>
                 <div className="calendar-controls">
                   <div className="calendar-control">
-                    <span className="calendar-model-label">Model</span>
+                    <div className="calendar-label-row">
+                      <span className="calendar-model-label">Model</span>
+                      <span className="model-info" tabIndex={0} aria-label="Model descriptions">
+                        ⓘ
+                        <span className="model-tooltip" role="tooltip">
+                          {forecastModelOptions.map((option) => (
+                            <span key={`model-tip-${option.value}`} className="model-tooltip-item">
+                              <strong>{option.label}:</strong> {getModelDescription(option.value)}
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+                    </div>
                     <select
                       className="calendar-model-select"
                       value={activeModel}
@@ -1846,7 +1959,7 @@ function App() {
                       const snowAmount = Number(visibleOverview?.snowTotal ?? 0);
                       const isPowDay = hasAccess && hasOverview && snowAmount >= 6;
                       const isSnowDay = hasAccess && hasOverview && snowAmount >= 3;
-                      const windyValueMph = Number(visibleOverview?.avgWindspeed ?? 0);
+                      const windyValueMph = Number(visibleOverview?.maxWindspeed ?? 0);
                       const isWindy = hasAccess && hasOverview && Number.isFinite(windyValueMph) && windyValueMph >= WINDY_THRESHOLD_MPH;
                       const precipTotal = Number(visibleOverview?.precipTotal ?? 0);
                       const precipType = hasAccess && hasOverview && precipTotal > 0
@@ -1900,7 +2013,7 @@ function App() {
                                     <span className="temp-low temp-value-mobile">{formatTempValue(visibleOverview?.minTemp, units)}</span>
                                   </span>
                                   <span className="day-metric-line metric-secondary">
-                                    {hasAccess ? formatWind(visibleOverview?.avgWindspeed, units) : ''}
+                                    {hasAccess ? formatWind(visibleOverview?.maxWindspeed, units) : ''}
                                   </span>
                                 </div>
                               </>

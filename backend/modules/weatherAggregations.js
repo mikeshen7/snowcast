@@ -62,8 +62,7 @@ function aggregateDailyOverview(hours, timeZone) {
         precipCount: 0,
         snowTotal: 0,
         snowCount: 0,
-        windSpeedSum: 0,
-        windCount: 0,
+        windMax: null,
         precipProbSum: 0,
         precipProbCount: 0,
         cloudCoverSum: 0,
@@ -93,8 +92,9 @@ function aggregateDailyOverview(hours, timeZone) {
     }
 
     if (hour.windspeed != null) {
-      bucket.windSpeedSum += hour.windspeed;
-      bucket.windCount += 1;
+      if (bucket.windMax == null || hour.windspeed > bucket.windMax) {
+        bucket.windMax = hour.windspeed;
+      }
     }
 
     if (hour.precipProb != null) {
@@ -141,7 +141,7 @@ function aggregateDailyOverview(hours, timeZone) {
       maxTemp: bucket.maxTemp,
       precipTotal: bucket.precipCount ? bucket.precipTotal : null,
       snowTotal: bucket.snowCount ? bucket.snowTotal : null,
-      avgWindspeed: bucket.windCount ? bucket.windSpeedSum / bucket.windCount : null,
+      maxWindspeed: bucket.windMax,
       avgPrecipProb: bucket.precipProbCount ? bucket.precipProbSum / bucket.precipProbCount : null,
       avgCloudCover: bucket.cloudCoverCount ? bucket.cloudCoverSum / bucket.cloudCoverCount : null,
       avgVisibility: bucket.visibilityCount ? bucket.visibilitySum / bucket.visibilityCount : null,
@@ -172,8 +172,7 @@ function createSegmentBuckets() {
       precipCount: 0,
       snowTotal: 0,
       snowCount: 0,
-      windSpeedSum: 0,
-      windCount: 0,
+      windMax: null,
       precipProbSum: 0,
       precipProbCount: 0,
       cloudCoverSum: 0,
@@ -231,8 +230,9 @@ function aggregateDailySegments(hours, timeZone) {
       segBucket.snowCount += 1;
     }
     if (hour.windspeed != null) {
-      segBucket.windSpeedSum += hour.windspeed;
-      segBucket.windCount += 1;
+      if (segBucket.windMax == null || hour.windspeed > segBucket.windMax) {
+        segBucket.windMax = hour.windspeed;
+      }
     }
     if (hour.precipProb != null) {
       segBucket.precipProbSum += hour.precipProb;
@@ -282,7 +282,7 @@ function aggregateDailySegments(hours, timeZone) {
           maxTemp: segBucket.maxTemp,
           precipTotal: segBucket.precipCount ? segBucket.precipTotal : null,
           snowTotal: segBucket.snowCount ? segBucket.snowTotal : null,
-          avgWindspeed: segBucket.windCount ? segBucket.windSpeedSum / segBucket.windCount : null,
+          maxWindspeed: segBucket.windMax,
           avgPrecipProb: segBucket.precipProbCount ? segBucket.precipProbSum / segBucket.precipProbCount : null,
           avgCloudCover: segBucket.cloudCoverCount ? segBucket.cloudCoverSum / segBucket.cloudCoverCount : null,
           avgVisibility: segBucket.visibilityCount ? segBucket.visibilitySum / segBucket.visibilityCount : null,
