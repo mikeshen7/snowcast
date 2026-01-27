@@ -9,7 +9,9 @@ const { logAdminEvent } = require('./adminLogs');
 let isProcessing = false;
 let nextAllowedAt = 0;
 let pollTimer = null;
+let cleanupTimer = null;
 const waiters = new Map();
+const CLEANUP_MAX_AGE_DAYS = 7;
 
 // get Interval Ms helper.
 function getIntervalMs() {
@@ -177,13 +179,47 @@ async function getStatus() {
   };
 }
 
+// cleanup Old Jobs removes completed/error jobs past retention.
+async function cleanupOldJobs() {
+  const cutoff = new Date(Date.now() - CLEANUP_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+  const result = await apiQueueDb.deleteMany({
+    status: { $in: ['done', 'error'] },
+    finishedAt: { $lt: cutoff },
+  });
+  if (result?.deletedCount) {
+    logAdminEvent({
+      type: 'queue_cleanup',
+      message: 'Queue cleanup removed old jobs',
+      meta: {
+        deleted: result.deletedCount,
+        cutoff: cutoff.toISOString(),
+      },
+    });
+  }
+}
+
+// remove Job deletes a queued job by id.
+async function removeJob(id) {
+  if (!id) return { deletedCount: 0 };
+  return apiQueueDb.deleteOne({ _id: id });
+}
+
 // start begins background queue processing.
 function start() {
   scheduleProcess(0);
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
+  }
+  cleanupOldJobs().catch(() => {});
+  cleanupTimer = setInterval(() => {
+    cleanupOldJobs().catch(() => {});
+  }, 24 * 60 * 60 * 1000);
 }
 
 module.exports = {
   enqueueHttp,
   getStatus,
+  removeJob,
   start,
 };

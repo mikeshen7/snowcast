@@ -21,7 +21,7 @@ const adminUserSchema = new Schema(
     favoriteLocations: [{ type: Schema.Types.ObjectId, ref: 'locations', default: [] }],
     homeResortId: { type: Schema.Types.ObjectId, ref: 'locations', default: null },
     unitsPreference: { type: String, enum: ['imperial', 'metric'], default: 'imperial' },
-    forecastModel: { type: String, enum: ['median', 'blend', 'gfs', 'ecmwf', 'hrrr'], default: 'median' },
+    forecastModel: { type: String, enum: ['median', 'blend', 'gfs', 'nbm', 'hrrr'], default: 'median' },
     forecastElevation: { type: String, enum: ['base', 'mid', 'top'], default: 'mid' },
     subscriptionExpiresAt: { type: Date, default: null },
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },

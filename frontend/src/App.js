@@ -25,6 +25,7 @@ import {
   redeemDiscountCode,
   trackEngagementEvent,
   submitFeedback,
+  getForecastModels,
 } from './api';
 import {
   buildCalendarRange,
@@ -57,14 +58,16 @@ const DEFAULT_ROLE_LIMITS = {
 
 const UNIT_STORAGE_KEY = 'snowcast-units';
 const ENGAGEMENT_SESSION_KEY = 'snowcast-session-id';
+const MODEL_STORAGE_KEY = 'snowcast-forecast-model';
+const ELEVATION_STORAGE_KEY = 'snowcast-forecast-elevation';
 const WIND_KMH_PER_MPH = 1.60934;
 const WINDY_THRESHOLD_MPH = 15;
 const CM_PER_INCH = 2.54;
 const DEFAULT_FORECAST_MODEL = 'median';
-const FORECAST_MODEL_OPTIONS = [
+const DEFAULT_FORECAST_MODEL_OPTIONS = [
   { value: 'median', label: 'Median' },
   { value: 'gfs', label: 'NOAA Global' },
-  { value: 'ecmwf', label: 'European Global' },
+  { value: 'nbm', label: 'NOAA Blend' },
   { value: 'hrrr', label: 'NOAA Hi Res' },
 ];
 const DEFAULT_FORECAST_ELEVATION = 'mid';
@@ -99,10 +102,10 @@ function normalizeForecastWindows(map) {
   return next;
 }
 
-function normalizeForecastModel(value) {
+function normalizeForecastModel(value, options = DEFAULT_FORECAST_MODEL_OPTIONS) {
   const next = String(value || '').toLowerCase().trim();
   if (next === 'blend') return DEFAULT_FORECAST_MODEL;
-  const allowed = new Set(FORECAST_MODEL_OPTIONS.map((option) => option.value));
+  const allowed = new Set(options.map((option) => option.value));
   return allowed.has(next) ? next : DEFAULT_FORECAST_MODEL;
 }
 
@@ -110,6 +113,34 @@ function normalizeForecastElevation(value) {
   const next = String(value || '').toLowerCase().trim();
   const allowed = new Set(FORECAST_ELEVATION_OPTIONS.map((option) => option.value));
   return allowed.has(next) ? next : DEFAULT_FORECAST_ELEVATION;
+}
+
+function getTimezoneOffsetMinutes(date, timeZone) {
+  if (!timeZone) return date.getTimezoneOffset();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const parts = formatter.formatToParts(date);
+  const values = {};
+  parts.forEach(({ type, value }) => {
+    values[type] = value;
+  });
+  const utcTime = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second)
+  );
+  return (utcTime - date.getTime()) / 60000;
 }
 
 function getEngagementSessionId() {
@@ -293,13 +324,16 @@ function App() {
   const [forecastError, setForecastError] = useState('');
   const [units, setUnits] = useStoredUnits();
   const [forecastModel, setForecastModel] = useState(DEFAULT_FORECAST_MODEL);
-  const [calendarModel, setCalendarModel] = useState(DEFAULT_FORECAST_MODEL);
-  const [dayModalModel, setDayModalModel] = useState(DEFAULT_FORECAST_MODEL);
-  const [hourlyModalModel, setHourlyModalModel] = useState(DEFAULT_FORECAST_MODEL);
+  const [activeModel, setActiveModel] = useState(() => {
+    const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
+    return normalizeForecastModel(stored || DEFAULT_FORECAST_MODEL);
+  });
   const [forecastElevation, setForecastElevation] = useState(DEFAULT_FORECAST_ELEVATION);
-  const [calendarElevation, setCalendarElevation] = useState(DEFAULT_FORECAST_ELEVATION);
-  const [dayModalElevation, setDayModalElevation] = useState(DEFAULT_FORECAST_ELEVATION);
-  const [hourlyModalElevation, setHourlyModalElevation] = useState(DEFAULT_FORECAST_ELEVATION);
+  const [forecastModelOptions, setForecastModelOptions] = useState(DEFAULT_FORECAST_MODEL_OPTIONS);
+  const [activeElevation, setActiveElevation] = useState(() => {
+    const stored = window.localStorage.getItem(ELEVATION_STORAGE_KEY);
+    return normalizeForecastElevation(stored || DEFAULT_FORECAST_ELEVATION);
+  });
   const [activeView, setActiveView] = useState('calendar');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dayModalOpen, setDayModalOpen] = useState(false);
@@ -310,10 +344,13 @@ function App() {
   const [hourlyModalDate, setHourlyModalDate] = useState(null);
   const [hourlyModalData, setHourlyModalData] = useState([]);
   const [hourlyModalLoading, setHourlyModalLoading] = useState(false);
+  const [hourlyModalTimezone, setHourlyModalTimezone] = useState('');
   const hourlyCanvasRef = useRef(null);
   const hourlyChartRef = useRef(null);
   const engagementSessionId = useMemo(() => getEngagementSessionId(), []);
   const engagementLocationRef = useRef(null);
+  const activeModelRef = useRef(activeModel);
+  const forecastModelRef = useRef(forecastModel);
 
   const role = resolveRole(user);
   const [today] = useState(() => new Date());
@@ -353,6 +390,61 @@ function App() {
     const match = locations.find((loc) => String(loc.id) === String(selectedLocationId));
     return match?.name || '';
   }, [locations, selectedLocationId]);
+
+  const selectedLocationTimezone = useMemo(() => {
+    if (!selectedLocationId) return '';
+    const match = locations.find((loc) => String(loc.id) === String(selectedLocationId));
+    return match?.tz_iana || '';
+  }, [locations, selectedLocationId]);
+
+  const applyModelSelection = useCallback((nextModel) => {
+    setActiveModel(nextModel);
+  }, []);
+
+  const applyElevationSelection = useCallback((nextElevation) => {
+    setActiveElevation(nextElevation);
+  }, []);
+
+  useEffect(() => {
+    activeModelRef.current = activeModel;
+  }, [activeModel]);
+
+  useEffect(() => {
+    forecastModelRef.current = forecastModel;
+  }, [forecastModel]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getForecastModels()
+      .then((models) => {
+        if (!isMounted) return;
+        const apiModels = Array.isArray(models) ? models : [];
+        const merged = [
+          { value: DEFAULT_FORECAST_MODEL, label: 'Median' },
+          ...apiModels
+            .filter((model) => model?.code)
+            .map((model) => ({
+              value: String(model.code).toLowerCase(),
+              label: String(model.label || model.code),
+            })),
+        ];
+        setForecastModelOptions(merged);
+        const currentActive = activeModelRef.current;
+        const currentPreferred = forecastModelRef.current;
+        const normalizedActive = normalizeForecastModel(currentActive, merged);
+        if (normalizedActive !== currentActive) {
+          setActiveModel(normalizedActive);
+        }
+        const normalizedPreferred = normalizeForecastModel(currentPreferred, merged);
+        if (normalizedPreferred !== currentPreferred) {
+          setForecastModel(normalizedPreferred);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const sendEngagement = useCallback((eventName, meta = {}, locationId = null) => {
     trackEngagementEvent({
@@ -521,11 +613,7 @@ function App() {
         setProfileName('');
         setProfileNameDraft('');
         setForecastModel(DEFAULT_FORECAST_MODEL);
-        setCalendarModel(DEFAULT_FORECAST_MODEL);
         setForecastElevation(DEFAULT_FORECAST_ELEVATION);
-        setCalendarElevation(DEFAULT_FORECAST_ELEVATION);
-        setDayModalElevation(DEFAULT_FORECAST_ELEVATION);
-        setHourlyModalElevation(DEFAULT_FORECAST_ELEVATION);
       }
       return;
     }
@@ -537,7 +625,7 @@ function App() {
         const nextHomeResortId = prefs?.homeResortId ? String(prefs.homeResortId) : '';
         const nextUnits = prefs?.units === 'metric' || prefs?.units === 'imperial' ? prefs.units : '';
         const nextName = prefs?.name ? String(prefs.name) : '';
-        const nextForecastModel = normalizeForecastModel(prefs?.forecastModel);
+        const nextForecastModel = normalizeForecastModel(prefs?.forecastModel, forecastModelOptions);
         const nextForecastElevation = normalizeForecastElevation(prefs?.forecastElevation);
         const nextExpiresAt = prefs?.subscriptionExpiresAt ? String(prefs.subscriptionExpiresAt) : '';
         setProfileName(nextName);
@@ -546,20 +634,26 @@ function App() {
         setHomeResortId(nextHomeResortId);
         setUnits(nextUnits || 'imperial');
         setForecastModel(nextForecastModel);
-        setCalendarModel(nextForecastModel);
         setForecastElevation(nextForecastElevation);
-        setCalendarElevation(nextForecastElevation);
         setSubscriptionExpiresAt(nextExpiresAt);
         setNewAlert((prev) => ({
           ...prev,
           model: nextForecastModel || DEFAULT_FORECAST_MODEL,
           elevation: nextForecastElevation || DEFAULT_FORECAST_ELEVATION,
         }));
-        if (nextHomeResortId && !firstLoginHandledRef.current) {
+        if (nextHomeResortId && !firstLoginHandledRef.current && !selectedLocationRef.current) {
           setSelectedLocationId(nextHomeResortId);
         }
         firstLoginHandledRef.current = true;
         preferencesLoadedRef.current = true;
+        const storedModel = window.localStorage.getItem(MODEL_STORAGE_KEY);
+        const storedElevation = window.localStorage.getItem(ELEVATION_STORAGE_KEY);
+        if (!storedModel && nextForecastModel) {
+          setActiveModel(nextForecastModel);
+        }
+        if (!storedElevation && nextForecastElevation) {
+          setActiveElevation(nextForecastElevation);
+        }
       })
       .catch(() => {
         if (!isMounted) return;
@@ -568,7 +662,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [authStatus, setUnits]);
+  }, [authStatus, setUnits, forecastModelOptions]);
 
   useEffect(() => {
     if (authStatus === 'authenticated') {
@@ -645,36 +739,17 @@ function App() {
   }, [authStatus, favorites, homeResortId, units, profileName, forecastModel, forecastElevation]);
 
   useEffect(() => {
-    setCalendarModel(forecastModel);
-  }, [forecastModel]);
-
-  useEffect(() => {
-    setCalendarElevation(forecastElevation);
-  }, [forecastElevation]);
-
-  useEffect(() => {
-    if (!dayModalOpen) {
-      setDayModalModel(forecastModel);
+    if (activeModel) {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, activeModel);
     }
-  }, [dayModalOpen, forecastModel]);
+  }, [activeModel]);
 
   useEffect(() => {
-    if (!dayModalOpen) {
-      setDayModalElevation(forecastElevation);
+    if (activeElevation) {
+      window.localStorage.setItem(ELEVATION_STORAGE_KEY, activeElevation);
     }
-  }, [dayModalOpen, forecastElevation]);
+  }, [activeElevation]);
 
-  useEffect(() => {
-    if (!hourlyModalOpen) {
-      setHourlyModalModel(forecastModel);
-    }
-  }, [hourlyModalOpen, forecastModel]);
-
-  useEffect(() => {
-    if (!hourlyModalOpen) {
-      setHourlyModalElevation(forecastElevation);
-    }
-  }, [hourlyModalOpen, forecastElevation]);
 
   useEffect(() => {
     if (!selectedLocationId) return;
@@ -685,8 +760,8 @@ function App() {
       locationId: selectedLocationId,
       startDateEpoch: startEpoch,
       endDateEpoch: endEpoch,
-      model: calendarModel,
-      elevation: calendarElevation,
+      model: activeModel,
+      elevation: activeElevation,
     })
       .then((overview) => {
         setDailyOverview(overview);
@@ -696,7 +771,7 @@ function App() {
         setForecastError(error.message || 'Unable to load forecast data.');
         setLoadingForecast(false);
       });
-  }, [selectedLocationId, startEpoch, endEpoch, calendarModel, calendarElevation]);
+  }, [selectedLocationId, startEpoch, endEpoch, activeModel, activeElevation]);
 
   useEffect(() => {
     if (!hourlyModalOpen || !hourlyModalData.length) return;
@@ -937,13 +1012,13 @@ function App() {
           units,
           role,
           forecastModel,
+          activeModel,
           forecastElevation,
-          calendarModel,
-          calendarElevation,
-          dayModalModel,
-          dayModalElevation,
-          hourlyModalModel,
-          hourlyModalElevation,
+          activeElevation,
+          dayModalModel: activeModel,
+          dayModalElevation: activeElevation,
+          hourlyModalModel: activeModel,
+          hourlyModalElevation: activeElevation,
           signedIn: isSignedIn,
         },
       });
@@ -1170,23 +1245,26 @@ function App() {
     setDayModalDate(date);
     setDayModalSegments([]);
     setDayModalLoading(true);
-    const selectedModel = normalizeForecastModel(modelOverride || dayModalModel || forecastModel);
+    const selectedModel = normalizeForecastModel(modelOverride || activeModel || forecastModel);
     const selectedElevation = normalizeForecastElevation(
-      elevationOverride || dayModalElevation || forecastElevation
+      elevationOverride || activeElevation || forecastElevation
     );
-    setDayModalModel(selectedModel);
-    setDayModalElevation(selectedElevation);
 
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
+    const localOffset = getTimezoneOffsetMinutes(start, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const targetOffset = getTimezoneOffsetMinutes(start, selectedLocationTimezone);
+    const offsetDiffMinutes = Number.isFinite(targetOffset) && Number.isFinite(localOffset)
+      ? targetOffset - localOffset
+      : 0;
+    const startEpoch = start.getTime() + offsetDiffMinutes * 60000;
+    const endEpoch = startEpoch + 24 * 60 * 60 * 1000 - 1;
 
     try {
       const payload = await getDailySegments({
         locationId: selectedLocationId,
-        startDateEpoch: start.getTime(),
-        endDateEpoch: end.getTime(),
+        startDateEpoch: startEpoch,
+        endDateEpoch: endEpoch,
         model: selectedModel,
         elevation: selectedElevation,
       });
@@ -1206,28 +1284,33 @@ function App() {
     setHourlyModalData([]);
     setHourlyModalLoading(true);
     setDayModalOpen(false);
-    const selectedModel = normalizeForecastModel(modelOverride || hourlyModalModel || forecastModel);
+    const selectedModel = normalizeForecastModel(modelOverride || activeModel || forecastModel);
     const selectedElevation = normalizeForecastElevation(
-      elevationOverride || hourlyModalElevation || forecastElevation
+      elevationOverride || activeElevation || forecastElevation
     );
-    setHourlyModalModel(selectedModel);
-    setHourlyModalElevation(selectedElevation);
 
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
+    const localOffset = getTimezoneOffsetMinutes(start, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const targetOffset = getTimezoneOffsetMinutes(start, selectedLocationTimezone);
+    const offsetDiffMinutes = Number.isFinite(targetOffset) && Number.isFinite(localOffset)
+      ? targetOffset - localOffset
+      : 0;
+    const startEpoch = start.getTime() + offsetDiffMinutes * 60000;
+    const endEpoch = startEpoch + 24 * 60 * 60 * 1000 - 1;
 
     try {
       const payload = await getHourly({
         locationId: selectedLocationId,
-        startDateEpoch: start.getTime(),
-        endDateEpoch: end.getTime(),
+        startDateEpoch: startEpoch,
+        endDateEpoch: endEpoch,
         model: selectedModel,
         elevation: selectedElevation,
       });
+      setHourlyModalTimezone(payload?.location?.tz_iana || '');
       setHourlyModalData(payload?.data || []);
     } catch (error) {
+      setHourlyModalTimezone('');
       setHourlyModalData([]);
     } finally {
       setHourlyModalLoading(false);
@@ -1258,7 +1341,7 @@ function App() {
       return;
     }
     sendEngagement('day_opened', { date: toISODate(date) }, selectedLocationId);
-    await loadDaySegments(date, forecastModel, forecastElevation);
+    await loadDaySegments(date, activeModel, activeElevation);
   };
 
   const handleHourlyOpen = async (event) => {
@@ -1288,7 +1371,7 @@ function App() {
       return;
     }
     sendEngagement('hourly_opened', { date: toISODate(dayModalDate) }, selectedLocationId);
-    await loadHourly(dayModalDate, dayModalModel, dayModalElevation);
+    await loadHourly(dayModalDate, activeModel, activeElevation);
   };
 
   const handleDayShift = async (direction, event) => {
@@ -1297,7 +1380,7 @@ function App() {
     const nextDate = shiftDateByDay(dayModalDate, direction);
     if (!isDayVisible(nextDate)) return;
     sendEngagement('day_shifted', { date: toISODate(nextDate) }, selectedLocationId);
-    await loadDaySegments(nextDate, dayModalModel, dayModalElevation);
+    await loadDaySegments(nextDate, activeModel, activeElevation);
   };
 
   const handleHourlyShift = async (direction, event) => {
@@ -1306,7 +1389,7 @@ function App() {
     const nextDate = shiftDateByDay(hourlyModalDate, direction);
     if (!isDayVisible(nextDate)) return;
     sendEngagement('hourly_shifted', { date: toISODate(nextDate) }, selectedLocationId);
-    await loadHourly(nextDate, hourlyModalModel, hourlyModalElevation);
+    await loadHourly(nextDate, activeModel, activeElevation);
   };
 
   return (
@@ -1450,17 +1533,17 @@ function App() {
                         <span className="modal-model-label">Model</span>
                         <select
                           className="modal-model-select"
-                          value={dayModalModel}
+                          value={activeModel}
                           onChange={(event) => {
                             const nextModel = normalizeForecastModel(event.target.value);
-                            setDayModalModel(nextModel);
+                            applyModelSelection(nextModel);
                             if (dayModalDate) {
-                              loadDaySegments(dayModalDate, nextModel, dayModalElevation);
+                              loadDaySegments(dayModalDate, nextModel, activeElevation);
                             }
                           }}
                           aria-label="Forecast model"
                         >
-                          {FORECAST_MODEL_OPTIONS.map((option) => (
+                          {forecastModelOptions.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
@@ -1471,12 +1554,12 @@ function App() {
                         <span className="modal-model-label">Elevation</span>
                         <select
                           className="modal-model-select"
-                          value={dayModalElevation}
+                          value={activeElevation}
                           onChange={(event) => {
                             const nextElevation = normalizeForecastElevation(event.target.value);
-                            setDayModalElevation(nextElevation);
+                            applyElevationSelection(nextElevation);
                             if (dayModalDate) {
-                              loadDaySegments(dayModalDate, dayModalModel, nextElevation);
+                              loadDaySegments(dayModalDate, activeModel, nextElevation);
                             }
                           }}
                           aria-label="Forecast elevation"
@@ -1520,7 +1603,7 @@ function App() {
                     })}
                   </div>
                 ) : (
-                  <div className="day-modal-empty">No {dayModalModel.toUpperCase()} data available.</div>
+                  <div className="day-modal-empty">No {activeModel.toUpperCase()} data available.</div>
                 )}
               </div>
             </div>
@@ -1572,17 +1655,17 @@ function App() {
                     <span className="modal-model-label">Model</span>
                     <select
                       className="modal-model-select"
-                      value={hourlyModalModel}
+                      value={activeModel}
                       onChange={(event) => {
                         const nextModel = normalizeForecastModel(event.target.value);
-                        setHourlyModalModel(nextModel);
+                        applyModelSelection(nextModel);
                         if (hourlyModalDate) {
-                          loadHourly(hourlyModalDate, nextModel, hourlyModalElevation);
+                          loadHourly(hourlyModalDate, nextModel, activeElevation);
                         }
                       }}
                       aria-label="Forecast model"
                     >
-                      {FORECAST_MODEL_OPTIONS.map((option) => (
+                      {forecastModelOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -1593,12 +1676,12 @@ function App() {
                     <span className="modal-model-label">Elevation</span>
                     <select
                       className="modal-model-select"
-                      value={hourlyModalElevation}
+                      value={activeElevation}
                       onChange={(event) => {
                         const nextElevation = normalizeForecastElevation(event.target.value);
-                        setHourlyModalElevation(nextElevation);
+                        applyElevationSelection(nextElevation);
                         if (hourlyModalDate) {
-                          loadHourly(hourlyModalDate, hourlyModalModel, nextElevation);
+                          loadHourly(hourlyModalDate, activeModel, nextElevation);
                         }
                       }}
                       aria-label="Forecast elevation"
@@ -1640,7 +1723,10 @@ function App() {
                             <div className="hourly-scroll-inner" style={{ '--hour-count': hours.length }}>
                               <div className="hourly-row time-row">
                                 {hours.map((hour) => {
-                                  const time = new Date(hour.dateTimeEpoch).toLocaleTimeString(undefined, { hour: 'numeric' });
+                                  const time = new Date(hour.dateTimeEpoch).toLocaleTimeString(undefined, {
+                                    hour: 'numeric',
+                                    timeZone: hourlyModalTimezone || undefined,
+                                  });
                                   return (
                                     <div key={`time-${hour.dateTimeEpoch}`} className="row-cell">
                                       {time}
@@ -1729,7 +1815,7 @@ function App() {
                     })()}
                   </div>
                 ) : (
-                  <div className="day-modal-empty">No {hourlyModalModel.toUpperCase()} data available.</div>
+                  <div className="day-modal-empty">No {activeModel.toUpperCase()} data available.</div>
                 )}
               </div>
             </div>
@@ -1746,11 +1832,14 @@ function App() {
                     <span className="calendar-model-label">Model</span>
                     <select
                       className="calendar-model-select"
-                      value={calendarModel}
-                      onChange={(event) => setCalendarModel(normalizeForecastModel(event.target.value))}
+                      value={activeModel}
+                      onChange={(event) => {
+                        const nextModel = normalizeForecastModel(event.target.value);
+                        applyModelSelection(nextModel);
+                      }}
                       aria-label="Forecast model"
                     >
-                      {FORECAST_MODEL_OPTIONS.map((option) => (
+                      {forecastModelOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -1761,8 +1850,11 @@ function App() {
                     <span className="calendar-model-label">Elevation</span>
                     <select
                       className="calendar-model-select"
-                      value={calendarElevation}
-                      onChange={(event) => setCalendarElevation(normalizeForecastElevation(event.target.value))}
+                      value={activeElevation}
+                      onChange={(event) => {
+                        const nextElevation = normalizeForecastElevation(event.target.value);
+                        applyElevationSelection(nextElevation);
+                      }}
                       aria-label="Forecast elevation"
                     >
                       {FORECAST_ELEVATION_OPTIONS.map((option) => (
@@ -1945,13 +2037,16 @@ function App() {
                       </div>
                     </div>
                     <div className="profile-row">
-                      <span className="profile-label">Forecast model</span>
+                      <span className="profile-label">Default Forecast Model</span>
                       <select
                         className="profile-select"
                         value={forecastModel}
-                        onChange={(event) => setForecastModel(normalizeForecastModel(event.target.value))}
+                        onChange={(event) => {
+                          const nextModel = normalizeForecastModel(event.target.value, forecastModelOptions);
+                          setForecastModel(nextModel);
+                        }}
                       >
-                        {FORECAST_MODEL_OPTIONS.map((option) => (
+                        {forecastModelOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -1959,11 +2054,14 @@ function App() {
                       </select>
                     </div>
                     <div className="profile-row">
-                      <span className="profile-label">Forecast elevation</span>
+                      <span className="profile-label">Default Forecast Elevation</span>
                       <select
                         className="profile-select"
                         value={forecastElevation}
-                        onChange={(event) => setForecastElevation(normalizeForecastElevation(event.target.value))}
+                        onChange={(event) => {
+                          const nextElevation = normalizeForecastElevation(event.target.value);
+                          setForecastElevation(nextElevation);
+                        }}
                       >
                         {FORECAST_ELEVATION_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
@@ -2064,7 +2162,7 @@ function App() {
                               value={newAlert.model}
                               onChange={(event) => setNewAlert((prev) => ({ ...prev, model: event.target.value }))}
                             >
-                              {FORECAST_MODEL_OPTIONS.map((option) => (
+                              {forecastModelOptions.map((option) => (
                                 <option key={option.value} value={option.value}>
                                   {option.label}
                                 </option>

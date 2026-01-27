@@ -18,7 +18,7 @@ const { getPowAlertLimitForRole, canCheckPow, normalizeRole } = require('./roleC
 const SEND_HOUR_LOCAL = 17;
 const DEFAULT_MODEL = 'median';
 const DEFAULT_ELEVATION = 'mid';
-const MODEL_OPTIONS = new Set(['median', 'gfs', 'ecmwf', 'hrrr']);
+const MODEL_OPTIONS = new Set(['median', 'gfs', 'nbm', 'hrrr']);
 const ELEVATION_OPTIONS = new Set(['base', 'mid', 'top']);
 
 // Normalize Model.

@@ -9,6 +9,7 @@ const forecastModels = require('./forecastModels');
 const { refreshLocationsCache, getCachedLocations } = require('./locations');
 const powAlerts = require('./powAlerts');
 const { logAdminEvent } = require('./adminLogs');
+const { randomUUID } = require('crypto');
 
 // Log Backfill Shortfalls.
 function logBackfillShortfalls(location, results) {
@@ -56,87 +57,92 @@ async function fetchAllWeather(options = {}) {
     options: requestOptions,
   }));
   if (context === 'backfill') {
+    const models = forecastModels.listModels().filter((model) => model.enabled);
     for (const location of locations || []) {
-      const elevationTasks = weatherApi.listLocationElevations(location).map((elevation) => (async () => {
-        try {
-          const results = await weatherApi.fetchLocationModels(location, {
-            ...requestOptions,
-            elevationKey: elevation.key,
-            elevationFt: elevation.elevationFt,
-          });
-          logBackfillShortfalls(location, results);
-          if (!results || results.length === 0) {
-            logAdminEvent({
-              type: 'backfill',
-              message: 'Backfill location completed',
-              meta: {
-                name: location.name,
-                elevationKey: elevation.key,
-                model: 'unknown',
-                startDate: requestOptions.startDate,
-                endDate: requestOptions.endDate,
-              },
-            });
-          }
-          (results || []).forEach((result) => {
-            logAdminEvent({
-              type: 'backfill',
-              message: 'Backfill location completed',
-              meta: {
-                name: location.name,
-                elevationKey: elevation.key,
-                model: result?.model,
-                startDate: requestOptions.startDate,
-                endDate: requestOptions.endDate,
-              },
-            });
-          });
-        } catch (err) {
-          logAdminEvent({
-            type: 'fetch_error',
-            message: err.message,
-            meta: {
-              locationId: String(location._id),
-              name: location.name,
-              context,
+      const jobId = randomUUID();
+      logAdminEvent({
+        jobId,
+        type: 'Backfill',
+        status: 'Backfill started',
+        location: location.name,
+        message: '',
+        meta: { context },
+      });
+      const results = [];
+      let errorDetail = null;
+      const tasks = [];
+      for (const elevation of weatherApi.listLocationElevations(location)) {
+        for (const model of models) {
+          const task = weatherApi
+            .fetchLocation(location, {
+              ...requestOptions,
+              model: model.code,
               elevationKey: elevation.key,
-              details: err?.meta,
-            },
-          });
-          console.log(JSON.stringify({
-            event: 'weather_fetch_error',
-            locationId: String(location._id),
-            name: location.name,
-            context,
-            elevationKey: elevation.key,
-            error: err.message,
-          }));
+              elevationFt: elevation.elevationFt,
+            })
+            .then((result) => {
+              if (result) results.push(result);
+              return { ok: true };
+            })
+            .catch((err) => {
+              errorDetail = {
+                model: model.code,
+                elevationKey: elevation.key,
+                message: err.message,
+              };
+              console.log(JSON.stringify({
+                event: 'weather_backfill_error',
+                locationId: String(location._id),
+                name: location.name,
+                context,
+                model: model.code,
+                elevationKey: elevation.key,
+                error: err.message,
+              }));
+              return { ok: false };
+            });
+          tasks.push(task);
         }
-      })());
-      await Promise.all(elevationTasks);
+      }
+      await Promise.all(tasks);
+      logBackfillShortfalls(location, results);
+      if (errorDetail) {
+        logAdminEvent({
+          jobId,
+          type: 'Backfill',
+          status: 'Error',
+          location: location.name,
+          message: `Model: ${errorDetail.model} • Elevation: ${errorDetail.elevationKey} • ${errorDetail.message}`,
+        });
+      } else {
+        logAdminEvent({
+          jobId,
+          type: 'Backfill',
+          status: 'Backfill complete',
+          location: location.name,
+          message: '',
+        });
+      }
     }
     return;
   }
 
-  // models helper.
   const models = forecastModels.listModels().filter((model) => model.enabled);
-  logAdminEvent({
-    type: 'fetch',
-    message: 'Forecast fetch started',
-    meta: {
-      context,
-      locationCount: locations?.length || 0,
-      models: models.map((model) => model.code),
-    },
-  });
-  const modelTasks = new Map();
-  for (const model of models) {
-    const shouldFetch = forecastModels.shouldFetchModel(model.code);
-    if (!shouldFetch) {
-      continue;
-    }
+  const fetchableModels = models.filter((model) => forecastModels.shouldFetchModel(model.code));
+  const modelSuccess = new Map();
+  for (const location of locations || []) {
+    const jobId = randomUUID();
+    logAdminEvent({
+      jobId,
+      type: 'Fetch',
+      status: 'Fetch started',
+      location: location.name,
+      message: '',
+      meta: { context },
+    });
+    let errorDetail = null;
     const tasks = [];
-    for (const location of locations || []) {
+    for (const model of fetchableModels) {
       for (const elevation of weatherApi.listLocationElevations(location)) {
         const task = weatherApi
           .fetchLocation(location, {
@@ -145,19 +151,16 @@ async function fetchAllWeather(options = {}) {
             elevationKey: elevation.key,
             elevationFt: elevation.elevationFt,
           })
-          .then(() => ({ ok: true }))
+          .then(() => {
+            modelSuccess.set(model.code, (modelSuccess.get(model.code) || 0) + 1);
+            return { ok: true };
+          })
           .catch((err) => {
-            logAdminEvent({
-              type: 'fetch_error',
+            errorDetail = {
+              model: model.code,
+              elevationKey: elevation.key,
               message: err.message,
-              meta: {
-                name: location.name,
-                context,
-                model: model.code,
-                elevationKey: elevation.key,
-                details: err?.meta,
-              },
-            });
+            };
             console.log(JSON.stringify({
               event: 'weather_fetch_error',
               locationId: String(location._id),
@@ -172,28 +175,30 @@ async function fetchAllWeather(options = {}) {
         tasks.push(task);
       }
     }
-    modelTasks.set(model.code, tasks);
-  }
-  for (const model of models) {
-    const tasks = modelTasks.get(model.code);
-    if (!tasks) {
-      continue;
+    await Promise.all(tasks);
+    if (errorDetail) {
+      logAdminEvent({
+        jobId,
+        type: 'Fetch',
+        status: 'Error',
+        location: location.name,
+        message: `Model: ${errorDetail.model} • Elevation: ${errorDetail.elevationKey} • ${errorDetail.message}`,
+      });
+    } else {
+      logAdminEvent({
+        jobId,
+        type: 'Fetch',
+        status: 'Fetch complete',
+        location: location.name,
+        message: '',
+      });
     }
-    const results = await Promise.all(tasks);
-    const successCount = results.filter((result) => result.ok).length;
+  }
+  for (const model of fetchableModels) {
+    const successCount = modelSuccess.get(model.code) || 0;
     if (successCount > 0) {
       await forecastModels.markModelFetched(model.code);
     }
-    logAdminEvent({
-      type: 'fetch',
-      message: 'Forecast fetch completed',
-      meta: {
-        context,
-        model: model.code,
-        locationCount: locations?.length || 0,
-        successCount,
-      },
-    });
   }
 }
 
@@ -234,66 +239,73 @@ async function backfillLocations({ locationIds = [] } = {}) {
     startDate,
     endDate,
   }));
-  const tasks = [];
+  const models = forecastModels.listModels().filter((model) => model.enabled);
   for (const location of selected) {
-    const elevationTasks = weatherApi.listLocationElevations(location).map((elevation) => (async () => {
-      try {
-        const results = await weatherApi.fetchLocationModels(location, {
-          startDate,
-          endDate,
-          context: 'backfill',
-          elevationKey: elevation.key,
-          elevationFt: elevation.elevationFt,
-        });
-        logBackfillShortfalls(location, results);
-        if (!results || results.length === 0) {
-          logAdminEvent({
-            type: 'backfill',
-            message: 'Manual backfill location completed',
-            meta: {
-              name: location.name,
-              elevationKey: elevation.key,
-              model: 'unknown',
-              startDate,
-              endDate,
-            },
-          });
-        }
-        (results || []).forEach((result) => {
-          logAdminEvent({
-            type: 'backfill',
-            message: 'Manual backfill location completed',
-            meta: {
-              name: location.name,
-              elevationKey: elevation.key,
-              model: result?.model,
-              startDate,
-              endDate,
-            },
-          });
-        });
-      } catch (err) {
-        logAdminEvent({
-          type: 'backfill_error',
-          message: err.message,
-          meta: {
-            name: location.name,
+    const jobId = randomUUID();
+    logAdminEvent({
+      jobId,
+      type: 'Backfill',
+      status: 'Backfill started',
+      location: location.name,
+      message: '',
+      meta: { context: 'manual_backfill' },
+    });
+    const results = [];
+    let errorDetail = null;
+    const tasks = [];
+    for (const elevation of weatherApi.listLocationElevations(location)) {
+      for (const model of models) {
+        const task = weatherApi
+          .fetchLocation(location, {
+            startDate,
+            endDate,
+            context: 'backfill',
+            model: model.code,
             elevationKey: elevation.key,
-            details: err?.meta,
-          },
-        });
-        console.log(JSON.stringify({
-          event: 'weather_backfill_error',
-          locationId: String(location._id),
-          name: location.name,
-          elevationKey: elevation.key,
-          error: err.message,
-        }));
+            elevationFt: elevation.elevationFt,
+          })
+          .then((result) => {
+            if (result) results.push(result);
+            return { ok: true };
+          })
+          .catch((err) => {
+            errorDetail = {
+              model: model.code,
+              elevationKey: elevation.key,
+              message: err.message,
+            };
+            console.log(JSON.stringify({
+              event: 'weather_backfill_error',
+              locationId: String(location._id),
+              name: location.name,
+              elevationKey: elevation.key,
+              error: err.message,
+            }));
+            return { ok: false };
+          });
+        tasks.push(task);
       }
-    })());
-    tasks.push(...elevationTasks);
+    }
+    await Promise.all(tasks);
+    logBackfillShortfalls(location, results);
+    if (errorDetail) {
+      logAdminEvent({
+        jobId,
+        type: 'Backfill',
+        status: 'Error',
+        location: location.name,
+        message: `Model: ${errorDetail.model} • Elevation: ${errorDetail.elevationKey} • ${errorDetail.message}`,
+      });
+    } else {
+      logAdminEvent({
+        jobId,
+        type: 'Backfill',
+        status: 'Backfill complete',
+        location: location.name,
+        message: '',
+      });
+    }
   }
-  await Promise.all(tasks);
   return { count: selected.length };
 }
 
@@ -313,22 +325,23 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
 
   // models helper.
   const models = forecastModels.listModels().filter((model) => model.enabled);
-  logAdminEvent({
-    type: 'fetch',
-    message: 'Manual forecast fetch started',
-    meta: {
-      context: 'manual_fetch',
-      locationCount: selected.length,
-      models: models.map((model) => model.code),
-    },
-  });
-  const modelTasks = new Map();
-  for (const model of models) {
-    if (!force && !forecastModels.shouldFetchModel(model.code)) {
-      continue;
-    }
+  const modelSuccess = new Map();
+  for (const location of selected) {
+    const jobId = randomUUID();
+    logAdminEvent({
+      jobId,
+      type: 'Fetch',
+      status: 'Fetch started',
+      location: location.name,
+      message: '',
+      meta: { context: 'manual_fetch' },
+    });
+    let errorDetail = null;
     const tasks = [];
-    for (const location of selected) {
+    for (const model of models) {
+      const modelTasks = [];
+      const shouldFetch = force || forecastModels.shouldFetchModel(model.code);
+      if (!shouldFetch) continue;
       for (const elevation of weatherApi.listLocationElevations(location)) {
         const task = weatherApi
           .fetchLocation(location, {
@@ -338,19 +351,16 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
             elevationKey: elevation.key,
             elevationFt: elevation.elevationFt,
           })
-          .then(() => ({ ok: true }))
+          .then(() => {
+            modelSuccess.set(model.code, (modelSuccess.get(model.code) || 0) + 1);
+            return { ok: true };
+          })
           .catch((err) => {
-            logAdminEvent({
-              type: 'fetch_error',
+            errorDetail = {
+              model: model.code,
+              elevationKey: elevation.key,
               message: err.message,
-              meta: {
-                name: location.name,
-                context: 'forecast',
-                model: model.code,
-                elevationKey: elevation.key,
-                details: err?.meta,
-              },
-            });
+            };
             console.log(JSON.stringify({
               event: 'weather_fetch_error',
               locationId: String(location._id),
@@ -363,30 +373,33 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
             return { ok: false };
           });
         tasks.push(task);
+        modelTasks.push(task);
       }
     }
-    modelTasks.set(model.code, tasks);
+    await Promise.all(tasks);
+    if (errorDetail) {
+      logAdminEvent({
+        jobId,
+        type: 'Fetch',
+        status: 'Error',
+        location: location.name,
+        message: `Model: ${errorDetail.model} • Elevation: ${errorDetail.elevationKey} • ${errorDetail.message}`,
+      });
+    } else {
+      logAdminEvent({
+        jobId,
+        type: 'Fetch',
+        status: 'Fetch complete',
+        location: location.name,
+        message: '',
+      });
+    }
   }
   for (const model of models) {
-    const tasks = modelTasks.get(model.code);
-    if (!tasks) {
-      continue;
-    }
-    const results = await Promise.all(tasks);
-    const successCount = results.filter((result) => result.ok).length;
+    const successCount = modelSuccess.get(model.code) || 0;
     if (successCount > 0) {
       await forecastModels.markModelFetched(model.code);
     }
-    logAdminEvent({
-      type: 'fetch',
-      message: 'Manual forecast fetch completed',
-      meta: {
-        context: 'manual_fetch',
-        model: model.code,
-        locationCount: selected.length,
-        successCount,
-      },
-    });
   }
 
   return { count: selected.length };

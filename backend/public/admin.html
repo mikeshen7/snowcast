@@ -20,6 +20,14 @@
     th, td { padding: 0.6rem; border-bottom: 1px solid #eee; text-align: left; }
     th { background: #fafafa; }
     .status { margin-top: 1rem; font-size: 0.9rem; color: #444; }
+    #logsTable { table-layout: fixed; width: 100%; }
+    #logsTable th:nth-child(1), #logsTable td:nth-child(1) { width: 180px; }
+    #logsTable th:nth-child(2), #logsTable td:nth-child(2) { width: 90px; }
+    #logsTable th:nth-child(3), #logsTable td:nth-child(3) { width: 160px; }
+    #logsTable th:nth-child(4), #logsTable td:nth-child(4) { width: 180px; }
+    #logsTable th:nth-child(5), #logsTable td:nth-child(5) { width: auto; }
+    #logsTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #logsTable tr.log-error td { color: #b42318; }
     .value-input { width: 100%; box-sizing: border-box; }
     .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
     .tab-btn { padding: 0.5rem 1rem; border: 1px solid #ccc; border-radius: 4px; background: #eee; cursor: pointer; color: #333; }
@@ -165,7 +173,7 @@
           <select id="dailyModelSelect">
             <option value="median">Median</option>
             <option value="gfs">NOAA Global</option>
-            <option value="ecmwf">European Global</option>
+            <option value="nbm">NOAA Blend</option>
             <option value="hrrr">NOAA Hi Res</option>
           </select>
         </label>
@@ -227,7 +235,7 @@
           <select id="hourlyModelSelect">
             <option value="median">Median</option>
             <option value="gfs">NOAA Global</option>
-            <option value="ecmwf">European Global</option>
+            <option value="nbm">NOAA Blend</option>
             <option value="hrrr">NOAA Hi Res</option>
           </select>
         </label>
@@ -444,6 +452,12 @@
           </select>
         </label>
         <label>
+          Status:
+          <select id="logsStatusFilter">
+            <option value="">All Statuses</option>
+          </select>
+        </label>
+        <label>
           Message:
           <input type="text" id="logsMessageFilter" placeholder="Search message" />
         </label>
@@ -466,8 +480,9 @@
           <tr>
             <th>Time</th>
             <th>Type</th>
+            <th>Location</th>
+            <th>Status</th>
             <th>Message</th>
-            <th>Meta</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -493,6 +508,7 @@
             <th>Location</th>
             <th>Model</th>
             <th>Elevation</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -1355,6 +1371,7 @@
     const logsStatus = document.getElementById('logsStatus');
     const loadLogsBtn = document.getElementById('loadLogsBtn');
     const logsTypeFilter = document.getElementById('logsTypeFilter');
+    const logsStatusFilter = document.getElementById('logsStatusFilter');
     const logsMessageFilter = document.getElementById('logsMessageFilter');
     const logsStartDate = document.getElementById('logsStartDate');
     const logsEndDate = document.getElementById('logsEndDate');
@@ -1636,6 +1653,12 @@
     if (loadQueueBtn) loadQueueBtn.addEventListener('click', () => loadQueue(true));
     if (logsTypeFilter) {
       logsTypeFilter.addEventListener('change', () => {
+        logsPage = 1;
+        loadLogs(true);
+      });
+    }
+    if (logsStatusFilter) {
+      logsStatusFilter.addEventListener('change', () => {
         logsPage = 1;
         loadLogs(true);
       });
@@ -2981,6 +3004,7 @@
         params.set('limit', String(pageSize));
         params.set('page', String(logsPage));
         if (logsTypeFilter?.value) params.set('type', logsTypeFilter.value);
+        if (logsStatusFilter?.value) params.set('status', logsStatusFilter.value);
         if (logsMessageFilter?.value) params.set('message', logsMessageFilter.value);
         if (logsStartDate?.value) params.set('startDate', logsStartDate.value);
         if (logsEndDate?.value) params.set('endDate', logsEndDate.value);
@@ -2997,6 +3021,7 @@
         }
         logsTotal = Number(data?.total) || 0;
         updateLogsTypeFilter(data?.types || []);
+        updateLogsStatusFilter(data?.statuses || []);
         renderLogsTable(logs);
         updateLogsPagination(pageSize, logs.length);
         setStatusToast(logsStatus, `Loaded ${logs.length} logs`);
@@ -3022,6 +3047,23 @@
       }
     }
 
+    function updateLogsStatusFilter(statuses) {
+      if (!logsStatusFilter) return;
+      const current = logsStatusFilter.value || '';
+      logsStatusFilter.innerHTML = '<option value="">All Statuses</option>';
+      statuses.forEach((status) => {
+        const option = document.createElement('option');
+        option.value = status;
+        option.textContent = status;
+        logsStatusFilter.appendChild(option);
+      });
+      if (current && statuses.includes(current)) {
+        logsStatusFilter.value = current;
+      } else {
+        logsStatusFilter.value = '';
+      }
+    }
+
     function updateLogsPagination(pageSize, resultsCount) {
       if (!logsPrevPage || !logsNextPage || !logsPageInfo) return;
       const totalPages = logsTotal && pageSize ? Math.ceil(logsTotal / pageSize) : null;
@@ -3043,12 +3085,15 @@
       }
       logs.forEach((log) => {
         const tr = document.createElement('tr');
-        const meta = log.meta ? JSON.stringify(log.meta) : '';
+        if (String(log.status || '').toLowerCase() === 'error') {
+          tr.classList.add('log-error');
+        }
         tr.innerHTML = `
           <td>${formatDateTimeLocal(log.createdAt)}</td>
           <td>${log.type || ''}</td>
+          <td>${log.location || ''}</td>
+          <td>${log.status || ''}</td>
           <td>${log.message || ''}</td>
-          <td>${meta}</td>
         `;
         logsTableBody.appendChild(tr);
       });
@@ -3102,7 +3147,26 @@
           <td>${meta.name || meta.locationId || ''}</td>
           <td>${meta.model || ''}</td>
           <td>${meta.elevationKey || ''}</td>
+          <td><button class="ghost danger" data-job-id="${job.id ?? ''}">Remove</button></td>
         `;
+        const removeBtn = tr.querySelector('button[data-job-id]');
+        if (removeBtn) {
+          removeBtn.addEventListener('click', async () => {
+            const jobId = removeBtn.getAttribute('data-job-id');
+            if (!jobId) return;
+            try {
+              const res = await authFetch(`/admin/queue/${jobId}`, { method: 'DELETE' });
+              if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || 'Failed to remove job');
+              }
+              await loadQueue(true);
+              setStatusToast(queueStatus, 'Queue job removed');
+            } catch (err) {
+              setStatusToast(queueStatus, err.message, true);
+            }
+          });
+        }
         queueBody.appendChild(tr);
       });
       queueTable.style.display = 'table';

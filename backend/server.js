@@ -86,6 +86,12 @@ app.delete('/user/alerts/:id', (req, res, next) => powAlerts.handleDeleteAlert(r
 app.post('/user/alerts/check', (req, res, next) => powAlerts.handleCheckAlerts(req, res, next));
 app.post('/user/discount-codes/redeem', (req, res, next) => discountCodes.redeemCode(req, res, next));
 app.post('/feedback', (req, res, next) => feedback.handleSubmitFeedback(req, res, next));
+app.get('/forecast-models', (req, res) => {
+  const models = forecastModels.listModels()
+    .filter((model) => model.enabled)
+    .map((model) => ({ code: model.code, label: model.label }));
+  return res.status(200).send(models);
+});
 
 // *** Admin UI gate
 app.get('/admin.html', (request, response) => {
@@ -100,8 +106,10 @@ const PORT = config.backend.port;
 app.listen(PORT, () => {
   console.log(`server listening on ${PORT}`);
   adminLogs.logAdminEvent({
-    type: 'server_start',
-    message: `Server started on ${PORT}`,
+    type: 'Server',
+    status: `Server started on ${PORT}`,
+    location: '',
+    message: '',
     meta: { port: PORT },
   });
 });
@@ -149,6 +157,7 @@ if (ADMIN_ENABLED) {
   app.get('/admin/engagement/summary', requireAdminSession, (req, res, next) => adminEngagement.endpointSummary(req, res, next));
   app.get('/admin/logs', requireAdminSession, (req, res, next) => adminLogs.endpointListLogs(req, res, next));
   app.get('/admin/queue', requireAdminSession, (req, res, next) => adminQueue.endpointGetQueue(req, res, next));
+  app.delete('/admin/queue/:id', requireAdminSession, (req, res, next) => adminQueue.endpointDeleteQueueJob(req, res, next));
   app.get('/admin/forecast-models', requireAdminSession, (req, res, next) => adminForecastModels.listForecastModels(req, res, next));
   app.put('/admin/forecast-models/:code', requireAdminSession, (req, res, next) => adminForecastModels.updateForecastModel(req, res, next));
   app.get('/admin/locations/backfill', requireAdminSession, (req, res, next) => locations.endpointListBackfillLocations(req, res, next));

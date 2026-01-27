@@ -13,11 +13,11 @@ const DEFAULT_MODELS = [
     enabled: true,
   },
   {
-    code: 'ecmwf',
-    label: 'ECMWF IFS',
-    apiModelParam: 'ecmwf_ifs',
-    maxForecastDays: 15,
-    refreshHours: 6,
+    code: 'nbm',
+    label: 'NCEP NBM',
+    apiModelParam: 'ncep_nbm_conus',
+    maxForecastDays: 7,
+    refreshHours: 1,
     enabled: true,
   },
   {

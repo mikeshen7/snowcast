@@ -31,7 +31,7 @@ function normalizeUnits(input) {
 function normalizeForecastModel(input) {
   const value = String(input || '').toLowerCase().trim();
   if (value === 'blend') return 'median';
-  const allowed = new Set(['median', 'gfs', 'ecmwf', 'hrrr']);
+  const allowed = new Set(['median', 'gfs', 'nbm', 'hrrr']);
   return allowed.has(value) ? value : '';
 }
 

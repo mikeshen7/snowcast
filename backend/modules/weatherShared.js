@@ -11,7 +11,7 @@ const {
   shiftLocalDate,
 } = require('./timezone');
 
-const FORECAST_MODELS = ['gfs', 'ecmwf', 'hrrr'];
+const FORECAST_MODELS = ['gfs', 'nbm', 'hrrr'];
 const AUTO_MODEL = 'auto';
 const MEDIAN_MODEL = 'median';
 const DEFAULT_MODEL = MEDIAN_MODEL;

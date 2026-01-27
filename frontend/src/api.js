@@ -116,6 +116,10 @@ export function trackEngagementEvent({ event, sessionId, locationId, meta } = {}
   });
 }
 
+export function getForecastModels() {
+  return apiFetch('/forecast-models');
+}
+
 export function submitFeedback({ message, context } = {}) {
   return apiFetch('/feedback', {
     method: 'POST',

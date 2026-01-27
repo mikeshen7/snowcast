@@ -9,11 +9,26 @@ function escapeRegex(value) {
 }
 
 // Log Admin Event.
-async function logAdminEvent({ type, message, meta } = {}) {
+async function logAdminEvent({ jobId, type, status, location, message, meta } = {}) {
   if (!type) return;
   try {
+    if (jobId) {
+      const existing = await adminLogDb.findOne({ jobId });
+      if (existing) {
+        if (type) existing.type = String(type);
+        if (status !== undefined) existing.status = status ? String(status) : '';
+        if (location !== undefined) existing.location = location ? String(location) : '';
+        if (message !== undefined) existing.message = message ? String(message) : '';
+        if (meta !== undefined) existing.meta = meta || {};
+        await existing.save();
+        return;
+      }
+    }
     await adminLogDb.create({
+      jobId: jobId ? String(jobId) : undefined,
       type: String(type),
+      status: status ? String(status) : '',
+      location: location ? String(location) : '',
       message: message ? String(message) : '',
       meta: meta || {},
     });
@@ -28,10 +43,14 @@ async function endpointListLogs(request, response, next) {
     const limit = Math.min(Number(request.query.limit) || 200, 500);
     const page = Math.max(Number(request.query.page) || 1, 1);
     const type = String(request.query.type || '').trim();
+    const status = String(request.query.status || '').trim();
     const messageQuery = String(request.query.message || '').trim();
     const filter = {};
     if (type) {
       filter.type = type;
+    }
+    if (status) {
+      filter.status = status;
     }
     if (messageQuery) {
       filter.message = { $regex: escapeRegex(messageQuery), $options: 'i' };
@@ -58,6 +77,7 @@ async function endpointListLogs(request, response, next) {
     }
     const total = await adminLogDb.countDocuments(filter);
     const allTypes = await adminLogDb.distinct('type');
+    const allStatuses = await adminLogDb.distinct('status');
     const logs = await adminLogDb
       .find(filter)
       .sort({ createdAt: -1 })
@@ -68,9 +88,12 @@ async function endpointListLogs(request, response, next) {
       total,
       page,
       types: (allTypes || []).filter(Boolean).sort(),
+      statuses: (allStatuses || []).filter(Boolean).sort(),
       logs: logs.map((log) => ({
         id: log._id,
         type: log.type,
+        location: log.location || log.meta?.name || '',
+        status: log.status || '',
         message: log.message,
         meta: log.meta,
         createdAt: log.createdAt,

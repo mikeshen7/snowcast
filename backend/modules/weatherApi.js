@@ -12,10 +12,10 @@ const {
   getLocalPartsFromUtc,
 } = require('./timezone');
 const BASE_URL = 'https://api.open-meteo.com/v1/forecast';
-const FORECAST_MODELS = ['gfs', 'ecmwf', 'hrrr'];
+const FORECAST_MODELS = ['gfs', 'nbm', 'hrrr'];
 const MODEL_PARAM_MAP = {
   gfs: 'gfs_seamless',
-  ecmwf: 'ecmwf_ifs',
+  nbm: 'ncep_nbm_conus',
   hrrr: 'gfs_hrrr',
 };
 const DEFAULT_ELEVATION_KEY = 'mid';
@@ -259,22 +259,7 @@ async function fetchLocationModels(location, options = {}) {
     : options.model
       ? [options.model]
       : FORECAST_MODELS;
-  const tasks = models.map((model) => {
-    if (options.context === 'backfill') {
-      logAdminEvent({
-        type: 'backfill',
-        message: 'Backfill location started',
-        meta: {
-          name: location.name,
-          model,
-          elevationKey: options.elevationKey || DEFAULT_ELEVATION_KEY,
-          startDate: options.startDate,
-          endDate: options.endDate,
-        },
-      });
-    }
-    return fetchLocation(location, { ...options, model });
-  });
+  const tasks = models.map((model) => fetchLocation(location, { ...options, model }));
   const results = await Promise.all(tasks);
   return results.filter(Boolean);
 }
@@ -290,7 +275,8 @@ async function upsertWeatherDocs(location, name, data, model, elevationKey, elev
   const feels = data.hourly.apparent_temperature;
   const precip = data.hourly.precipitation;
   const precipProb = data.hourly.precipitation_probability;
-  const snowfall = data.hourly.snowfall;          // cm from Open-Meteo
+  const snowfall = data.hourly.snowfall;
+  const snowfallUnit = String(data.hourly_units?.snowfall || '').toLowerCase();
   const wind = data.hourly.windspeed_10m;         // mph
   const clouds = data.hourly.cloudcover;          // %
   const visibility = data.hourly.visibility;      // meters
@@ -308,7 +294,12 @@ async function upsertWeatherDocs(location, name, data, model, elevationKey, elev
     const dt = new Date(epochMs);
     const { conditions, icon } = mapWeatherCode(weathercodes[i]);
     const precipIn = precip?.[i] ?? null;
-    const snowIn = cmToIn(snowfall?.[i]);
+    const rawSnow = snowfall?.[i];
+    const snowIn = snowfallUnit === 'cm'
+      ? cmToIn(rawSnow)
+      : snowfallUnit === 'inch'
+        ? rawSnow
+        : cmToIn(rawSnow);
     const rainIn = precipIn != null && snowIn != null
       ? Math.max(0, precipIn - snowIn)
       : precipIn != null
