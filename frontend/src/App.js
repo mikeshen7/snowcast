@@ -336,15 +336,13 @@ function App() {
   });
   const [activeView, setActiveView] = useState('calendar');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [dayModalOpen, setDayModalOpen] = useState(false);
-  const [dayModalDate, setDayModalDate] = useState(null);
-  const [dayModalSegments, setDayModalSegments] = useState([]);
-  const [dayModalLoading, setDayModalLoading] = useState(false);
   const [hourlyModalOpen, setHourlyModalOpen] = useState(false);
   const [hourlyModalDate, setHourlyModalDate] = useState(null);
   const [hourlyModalData, setHourlyModalData] = useState([]);
   const [hourlyModalLoading, setHourlyModalLoading] = useState(false);
   const [hourlyModalTimezone, setHourlyModalTimezone] = useState('');
+  const [hourlyModalSegments, setHourlyModalSegments] = useState([]);
+  const [hourlyChartMetrics, setHourlyChartMetrics] = useState(['snow']);
   const hourlyCanvasRef = useRef(null);
   const hourlyChartRef = useRef(null);
   const engagementSessionId = useMemo(() => getEngagementSessionId(), []);
@@ -775,6 +773,7 @@ function App() {
 
   useEffect(() => {
     if (!hourlyModalOpen || !hourlyModalData.length) return;
+    if (!hourlyChartMetrics.includes('temp')) return;
     const canvas = hourlyCanvasRef.current;
     const container = hourlyChartRef.current;
     if (!canvas || !container) return;
@@ -814,7 +813,7 @@ function App() {
     }
 
     ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(225, 140, 27, 0.95)';
+    ctx.strokeStyle = 'rgba(47, 154, 102, 0.95)';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -832,7 +831,7 @@ function App() {
     });
     ctx.stroke();
 
-    ctx.fillStyle = 'rgba(225, 140, 27, 0.95)';
+    ctx.fillStyle = 'rgba(47, 154, 102, 0.95)';
     hourlyModalData.forEach((hour, index) => {
       const tempValue = hour.temp ?? minGrid;
       const ratio = (tempValue - minGrid) / gridRange;
@@ -842,7 +841,7 @@ function App() {
       ctx.arc(x, y, 2, 0, Math.PI * 2);
       ctx.fill();
     });
-  }, [hourlyModalData, hourlyModalOpen]);
+  }, [hourlyModalData, hourlyModalOpen, hourlyChartMetrics]);
 
   const handleRequestLink = async (event) => {
     event.preventDefault();
@@ -1240,16 +1239,7 @@ function App() {
     return next;
   };
 
-  const loadDaySegments = async (date, modelOverride, elevationOverride) => {
-    setDayModalOpen(true);
-    setDayModalDate(date);
-    setDayModalSegments([]);
-    setDayModalLoading(true);
-    const selectedModel = normalizeForecastModel(modelOverride || activeModel || forecastModel);
-    const selectedElevation = normalizeForecastElevation(
-      elevationOverride || activeElevation || forecastElevation
-    );
-
+  const getDayRangeEpoch = (date) => {
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
     const localOffset = getTimezoneOffsetMinutes(start, Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -1258,60 +1248,60 @@ function App() {
       ? targetOffset - localOffset
       : 0;
     const startEpoch = start.getTime() + offsetDiffMinutes * 60000;
-    const endEpoch = startEpoch + 24 * 60 * 60 * 1000 - 1;
-
-    try {
-      const payload = await getDailySegments({
-        locationId: selectedLocationId,
-        startDateEpoch: startEpoch,
-        endDateEpoch: endEpoch,
-        model: selectedModel,
-        elevation: selectedElevation,
-      });
-      const dayKey = toISODate(date);
-      const day = payload?.days?.find((entry) => entry.date === dayKey);
-      setDayModalSegments(day?.segments || []);
-    } catch (error) {
-      setDayModalSegments([]);
-    } finally {
-      setDayModalLoading(false);
-    }
+    return { startEpoch, endEpoch: startEpoch + 24 * 60 * 60 * 1000 - 1 };
   };
 
-  const loadHourly = async (date, modelOverride, elevationOverride) => {
+  const fetchDaySegments = async (date, model, elevation) => {
+    const { startEpoch, endEpoch } = getDayRangeEpoch(date);
+    const payload = await getDailySegments({
+      locationId: selectedLocationId,
+      startDateEpoch: startEpoch,
+      endDateEpoch: endEpoch,
+      model,
+      elevation,
+    });
+    const dayKey = toISODate(date);
+    const day = payload?.days?.find((entry) => entry.date === dayKey);
+    return day?.segments || [];
+  };
+
+  const fetchHourlyData = async (date, model, elevation) => {
+    const { startEpoch, endEpoch } = getDayRangeEpoch(date);
+    return getHourly({
+      locationId: selectedLocationId,
+      startDateEpoch: startEpoch,
+      endDateEpoch: endEpoch,
+      model,
+      elevation,
+    });
+  };
+
+  const loadCombinedModal = async (date, modelOverride, elevationOverride) => {
+    if (!selectedLocationId) return;
+    const selectedModel = normalizeForecastModel(modelOverride || activeModel || forecastModel);
+    const selectedElevation = normalizeForecastElevation(
+      elevationOverride || activeElevation || forecastElevation
+    );
     setHourlyModalOpen(true);
     setHourlyModalDate(date);
     setHourlyModalData([]);
     setHourlyModalLoading(true);
-    setDayModalOpen(false);
-    const selectedModel = normalizeForecastModel(modelOverride || activeModel || forecastModel);
-    const selectedElevation = normalizeForecastElevation(
-      elevationOverride || activeElevation || forecastElevation
-    );
-
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const localOffset = getTimezoneOffsetMinutes(start, Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const targetOffset = getTimezoneOffsetMinutes(start, selectedLocationTimezone);
-    const offsetDiffMinutes = Number.isFinite(targetOffset) && Number.isFinite(localOffset)
-      ? targetOffset - localOffset
-      : 0;
-    const startEpoch = start.getTime() + offsetDiffMinutes * 60000;
-    const endEpoch = startEpoch + 24 * 60 * 60 * 1000 - 1;
+    setHourlyModalSegments([]);
+    setHourlyChartMetrics(['temp', 'snow', 'rain']);
 
     try {
-      const payload = await getHourly({
-        locationId: selectedLocationId,
-        startDateEpoch: startEpoch,
-        endDateEpoch: endEpoch,
-        model: selectedModel,
-        elevation: selectedElevation,
-      });
-      setHourlyModalTimezone(payload?.location?.tz_iana || '');
-      setHourlyModalData(payload?.data || []);
-    } catch (error) {
-      setHourlyModalTimezone('');
-      setHourlyModalData([]);
+      const [segments, hourlyPayload] = await Promise.all([
+        fetchDaySegments(date, selectedModel, selectedElevation).catch(() => []),
+        fetchHourlyData(date, selectedModel, selectedElevation).catch(() => null),
+      ]);
+      setHourlyModalSegments(segments);
+      if (hourlyPayload) {
+        setHourlyModalTimezone(hourlyPayload?.location?.tz_iana || '');
+        setHourlyModalData(hourlyPayload?.data || []);
+      } else {
+        setHourlyModalTimezone('');
+        setHourlyModalData([]);
+      }
     } finally {
       setHourlyModalLoading(false);
     }
@@ -1341,55 +1331,16 @@ function App() {
       return;
     }
     sendEngagement('day_opened', { date: toISODate(date) }, selectedLocationId);
-    await loadDaySegments(date, activeModel, activeElevation);
+    await loadCombinedModal(date, activeModel, activeElevation);
   };
 
-  const handleHourlyOpen = async (event) => {
-    event.stopPropagation();
-    if (!dayModalDate) return;
-    const canViewHourly = roleHourly[role] ?? false;
-    if (!canViewHourly) {
-      if (!isSignedIn) {
-        showToast('Sign in to see more', 'warning', 6000, {
-          label: 'Sign in',
-          onClick: () => {
-            setShowLogin(true);
-            setToastMessage('');
-            setToastAction(null);
-          },
-        });
-      } else {
-        showToast('Upgrade to see more', 'warning', 6000, {
-          label: 'Upgrade',
-          onClick: () => {
-            setActiveView('subscription');
-            setToastMessage('');
-            setToastAction(null);
-          },
-        });
-      }
-      return;
-    }
-    sendEngagement('hourly_opened', { date: toISODate(dayModalDate) }, selectedLocationId);
-    await loadHourly(dayModalDate, activeModel, activeElevation);
-  };
-
-  const handleDayShift = async (direction, event) => {
-    event.stopPropagation();
-    if (!dayModalDate) return;
-    const nextDate = shiftDateByDay(dayModalDate, direction);
-    if (!isDayVisible(nextDate)) return;
-    sendEngagement('day_shifted', { date: toISODate(nextDate) }, selectedLocationId);
-    await loadDaySegments(nextDate, activeModel, activeElevation);
-  };
-
-  const handleHourlyShift = async (direction, event) => {
+  const handleHourlyWeekShift = async (direction, event) => {
     event.stopPropagation();
     if (!hourlyModalDate) return;
-    const nextDate = shiftDateByDay(hourlyModalDate, direction);
+    const nextDate = shiftDateByDay(hourlyModalDate, direction * 7);
     if (!isDayVisible(nextDate)) return;
     sendEngagement('hourly_shifted', { date: toISODate(nextDate) }, selectedLocationId);
-    await loadHourly(nextDate, activeModel, activeElevation);
+    await loadCombinedModal(nextDate, activeModel, activeElevation);
   };
 
   return (
@@ -1492,123 +1443,6 @@ function App() {
             </div>
           ) : null}
 
-          {dayModalOpen ? (
-            <div className="day-modal-overlay" role="presentation" onClick={() => setDayModalOpen(false)}>
-              <div
-                className="day-modal"
-                role="dialog"
-                aria-modal="true"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="day-modal-header">
-                  <div>
-                    <div className="modal-nav">
-                      <button
-                        type="button"
-                        className="ghost nav-arrow"
-                        onClick={(event) => handleDayShift(-1, event)}
-                        disabled={!dayModalDate || !isDayVisible(shiftDateByDay(dayModalDate, -1))}
-                        aria-label="Previous day"
-                      >
-                        ‹
-                      </button>
-                      <h2>
-                        {dayModalDate
-                          ? dayModalDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })
-                          : 'Day details'}
-                      </h2>
-                      <button
-                        type="button"
-                        className="ghost nav-arrow"
-                        onClick={(event) => handleDayShift(1, event)}
-                        disabled={!dayModalDate || !isDayVisible(shiftDateByDay(dayModalDate, 1))}
-                        aria-label="Next day"
-                      >
-                        ›
-                      </button>
-                    </div>
-                    <p>{dayModalDate ? formatWeekday(dayModalDate) : ''}</p>
-                    <div className="modal-controls">
-                      <div className="modal-control">
-                        <span className="modal-model-label">Model</span>
-                        <select
-                          className="modal-model-select"
-                          value={activeModel}
-                          onChange={(event) => {
-                            const nextModel = normalizeForecastModel(event.target.value);
-                            applyModelSelection(nextModel);
-                            if (dayModalDate) {
-                              loadDaySegments(dayModalDate, nextModel, activeElevation);
-                            }
-                          }}
-                          aria-label="Forecast model"
-                        >
-                          {forecastModelOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="modal-control">
-                        <span className="modal-model-label">Elevation</span>
-                        <select
-                          className="modal-model-select"
-                          value={activeElevation}
-                          onChange={(event) => {
-                            const nextElevation = normalizeForecastElevation(event.target.value);
-                            applyElevationSelection(nextElevation);
-                            if (dayModalDate) {
-                              loadDaySegments(dayModalDate, activeModel, nextElevation);
-                            }
-                          }}
-                          aria-label="Forecast elevation"
-                        >
-                          {FORECAST_ELEVATION_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                  <button type="button" className="ghost" onClick={() => setDayModalOpen(false)} aria-label="Close day details">
-                    ✕
-                  </button>
-                </div>
-                <button type="button" className="hourly-link" onClick={handleHourlyOpen}>
-                  Hourly →
-                </button>
-                {dayModalLoading ? (
-                  <div className="day-modal-loading">Loading segments…</div>
-                ) : dayModalSegments.length ? (
-                  <div className="day-modal-grid">
-                    {dayModalSegments.map((segment) => {
-                      const iconSrc = segment.representativeHour?.icon
-                        ? getIconSrc(segment.representativeHour.icon)
-                        : null;
-                      return (
-                        <div className="segment-card" key={segment.id}>
-                          <div className="segment-title">{segment.label}</div>
-                          {iconSrc ? <img src={iconSrc} alt="segment icon" /> : <div className="icon-placeholder" />}
-                          <div className="segment-sub day-metric-line">
-                            <span className="temp-high">{formatTemp(segment.maxTemp, units)}</span>
-                            <span className="temp-low">{formatTemp(segment.minTemp, units)}</span>
-                          </div>
-                          <div className="segment-metric day-metric-line">{formatSnow(segment.snowTotal, units)}</div>
-                          <div className="segment-sub day-metric-line">Wind {formatWind(segment.avgWindspeed, units)}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="day-modal-empty">No {activeModel.toUpperCase()} data available.</div>
-                )}
-              </div>
-            </div>
-          ) : null}
-
           {hourlyModalOpen ? (
             <div className="day-modal-overlay" role="presentation" onClick={() => setHourlyModalOpen(false)}>
               <div
@@ -1619,34 +1453,72 @@ function App() {
               >
                 <div className="day-modal-header">
                   <div>
-                    <div className="modal-nav">
+                    <div className="modal-nav detail-nav">
                       <button
                         type="button"
                         className="ghost nav-arrow"
-                        onClick={(event) => handleHourlyShift(-1, event)}
-                        disabled={!hourlyModalDate || !isDayVisible(shiftDateByDay(hourlyModalDate, -1))}
-                        aria-label="Previous day"
+                        onClick={(event) => handleHourlyWeekShift(-1, event)}
+                        disabled={!hourlyModalDate || !isDayVisible(shiftDateByDay(hourlyModalDate, -7))}
+                        aria-label="Previous week"
                       >
                         ‹
                       </button>
-                      <h2>
-                        {hourlyModalDate
-                          ? hourlyModalDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })
-                          : 'Hourly details'}
-                      </h2>
+                      <div className="detail-week">
+                        <div className="detail-month">
+                          {hourlyModalDate
+                            ? hourlyModalDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+                            : ''}
+                        </div>
+                        <div className="detail-week-grid">
+                          {(hourlyModalDate
+                            ? (() => {
+                                const start = new Date(hourlyModalDate);
+                                start.setHours(0, 0, 0, 0);
+                                start.setDate(start.getDate() - start.getDay());
+                                return Array.from({ length: 7 }, (_, index) => {
+                                  const day = new Date(start);
+                                  day.setDate(start.getDate() + index);
+                                  return day;
+                                });
+                              })()
+                            : []
+                          ).map((day) => {
+                            const isActive = hourlyModalDate && toISODate(day) === toISODate(hourlyModalDate);
+                            const isToday = toISODate(day) === toISODate(today);
+                            return (
+                              <button
+                                key={`detail-day-${day.toISOString()}`}
+                                type="button"
+                                className={`detail-day ${isActive ? 'active' : ''} ${isToday ? 'today' : ''}`}
+                                onClick={() => loadCombinedModal(day, activeModel, activeElevation)}
+                                disabled={!isDayVisible(day)}
+                              >
+                                <span className="detail-weekday">
+                                  {day
+                                    .toLocaleDateString(undefined, { weekday: 'short' })
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                                </span>
+                                <span className="detail-date">
+                                  {day.toLocaleDateString(undefined, { day: 'numeric' })}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                       <button
                         type="button"
                         className="ghost nav-arrow"
-                        onClick={(event) => handleHourlyShift(1, event)}
-                        disabled={!hourlyModalDate || !isDayVisible(shiftDateByDay(hourlyModalDate, 1))}
-                        aria-label="Next day"
+                        onClick={(event) => handleHourlyWeekShift(1, event)}
+                        disabled={!hourlyModalDate || !isDayVisible(shiftDateByDay(hourlyModalDate, 7))}
+                        aria-label="Next week"
                       >
                         ›
                       </button>
                     </div>
-                    <p>{hourlyModalDate ? formatWeekday(hourlyModalDate) : ''}</p>
                   </div>
-                  <button type="button" className="ghost" onClick={() => setHourlyModalOpen(false)} aria-label="Close hourly details">
+                  <button type="button" className="ghost" onClick={() => setHourlyModalOpen(false)} aria-label="Close detail view">
                     ✕
                   </button>
                 </div>
@@ -1660,7 +1532,7 @@ function App() {
                         const nextModel = normalizeForecastModel(event.target.value);
                         applyModelSelection(nextModel);
                         if (hourlyModalDate) {
-                          loadHourly(hourlyModalDate, nextModel, activeElevation);
+                          loadCombinedModal(hourlyModalDate, nextModel, activeElevation);
                         }
                       }}
                       aria-label="Forecast model"
@@ -1681,7 +1553,7 @@ function App() {
                         const nextElevation = normalizeForecastElevation(event.target.value);
                         applyElevationSelection(nextElevation);
                         if (hourlyModalDate) {
-                          loadHourly(hourlyModalDate, activeModel, nextElevation);
+                          loadCombinedModal(hourlyModalDate, activeModel, nextElevation);
                         }
                       }}
                       aria-label="Forecast elevation"
@@ -1693,6 +1565,32 @@ function App() {
                       ))}
                     </select>
                   </div>
+                  <div className="modal-control">
+                    <span className="modal-model-label">Chart</span>
+                    <div className="modal-checkboxes" role="group" aria-label="Chart metrics">
+                      {[
+                        { value: 'temp', label: 'Temp' },
+                        { value: 'snow', label: 'Snow' },
+                        { value: 'rain', label: 'Rain' },
+                      ].map((metric) => (
+                        <label key={metric.value} className="modal-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={hourlyChartMetrics.includes(metric.value)}
+                            onChange={(event) => {
+                              setHourlyChartMetrics((current) => {
+                                if (event.target.checked) {
+                                  return current.includes(metric.value) ? current : [...current, metric.value];
+                                }
+                                return current.filter((item) => item !== metric.value);
+                              });
+                            }}
+                          />
+                          <span>{metric.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 {hourlyModalLoading ? (
                   <div className="day-modal-loading">Loading hourly…</div>
@@ -1700,7 +1598,16 @@ function App() {
                   <div className="hourly-forecast">
                     {(() => {
                       const hours = hourlyModalData;
-                      const maxSnow = Math.max(...hours.map((hour) => hour.snow || 0), 6);
+                      const segments = hourlyModalSegments;
+                      const showTemp = hourlyChartMetrics.includes('temp');
+                      const showSnow = hourlyChartMetrics.includes('snow');
+                      const showRain = hourlyChartMetrics.includes('rain');
+                      const chartValues = hours.map((hour) => {
+                        const snowValue = showSnow ? (hour.snow || 0) : 0;
+                        const rainValue = showRain ? (hour.rain || 0) : 0;
+                        return Math.max(snowValue, rainValue);
+                      });
+                      const maxSnow = Math.max(...chartValues, 0.5);
                       const { minGrid, gridRange } = getTempScale(hours);
                       const chartHeight = 140;
                       const plotTop = 10;
@@ -1709,19 +1616,44 @@ function App() {
 
                       return (
                         <div className="hourly-table">
-                          <div className="hourly-labels">
-                            <div className="row-label">Time</div>
-                            <div className="row-label">Sky</div>
-                            <div className="row-label">Chart</div>
-                            <div className="row-label">Precip ({units === 'metric' ? 'cm' : 'in'})</div>
-                            <div className="row-label">Snow ({units === 'metric' ? 'cm' : 'in'})</div>
-                            <div className="row-label">Rain ({units === 'metric' ? 'cm' : 'in'})</div>
-                            <div className="row-label">Type</div>
-                            <div className="row-label">Wind ({units === 'imperial' ? 'mph' : 'km/h'})</div>
-                          </div>
                           <div className="hourly-scroll">
-                            <div className="hourly-scroll-inner" style={{ '--hour-count': hours.length }}>
-                              <div className="hourly-row time-row">
+                            <div className="hourly-grid" style={{ '--hour-count': hours.length }}>
+                              <div className="hourly-grid-row segment-row">
+                                <div className="row-label">Blocks</div>
+                                {segments.length ? (
+                                  segments.map((segment) => {
+                                    const span = Math.max(1, (segment.endHour ?? 0) - (segment.startHour ?? 0));
+                                    const iconSrc = segment.representativeHour?.icon
+                                      ? getIconSrc(segment.representativeHour.icon)
+                                      : null;
+                                    return (
+                                      <div
+                                        key={`segment-${segment.id}`}
+                                        className="segment-block"
+                                        style={{ gridColumn: `span ${span}` }}
+                                      >
+                                        <div className="segment-name">{segment.label}</div>
+                                        {iconSrc ? <img src={iconSrc} alt="" /> : <div className="icon-placeholder" />}
+                                        <div className="segment-metric">
+                                          <span className="temp-high">{formatTemp(segment.maxTemp, units)}</span>
+                                          <span className="temp-low">{formatTemp(segment.minTemp, units)}</span>
+                                        </div>
+                                        <div className="segment-sub">
+                                          Snow {formatPrecipValue(segment.snowTotal, units)} {units === 'metric' ? 'cm' : 'in'}
+                                        </div>
+                                        <div className="segment-sub">Wind {formatWind(segment.avgWindspeed, units)}</div>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="segment-block empty" style={{ gridColumn: `span ${hours.length}` }}>
+                                    No segment data
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="hourly-grid-row time-row">
+                                <div className="row-label">Time</div>
                                 {hours.map((hour) => {
                                   const time = new Date(hour.dateTimeEpoch).toLocaleTimeString(undefined, {
                                     hour: 'numeric',
@@ -1735,7 +1667,8 @@ function App() {
                                 })}
                               </div>
 
-                              <div className="hourly-row icon-row">
+                              <div className="hourly-grid-row icon-row">
+                                <div className="row-label">Sky</div>
                                 {hours.map((hour) => {
                                   const iconSrc = hour.icon ? getIconSrc(hour.icon) : null;
                                   return (
@@ -1746,51 +1679,8 @@ function App() {
                                 })}
                               </div>
 
-                              <div className="hourly-row chart-row">
-                                <div className="chart-cells" ref={hourlyChartRef}>
-                                  {hours.map((hour) => {
-                                    const snowRatio = (hour.snow || 0) / maxSnow;
-                                    const tempValue = hour.temp ?? minGrid;
-                                    const tempRatio = (tempValue - minGrid) / gridRange;
-                                    const tempY = plotTop + (1 - tempRatio) * plotHeight;
-                                    return (
-                                      <div key={`snow-${hour.dateTimeEpoch}`} className="chart-cell">
-                                        <div className="snow-bar" style={{ height: `${snowRatio * 100}%` }} />
-                                        <div className="temp-label" style={{ top: `${tempY}px` }}>
-                                          {formatTemp(hour.temp, units)}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                  <canvas ref={hourlyCanvasRef} className="temp-line-canvas" />
-                                </div>
-                              </div>
-
-                              <div className="hourly-row precip-row">
-                                {hours.map((hour) => (
-                                  <div key={`precip-${hour.dateTimeEpoch}`} className="row-cell">
-                                    {formatPrecipValue(hour.precip, units)}
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="hourly-row snow-row">
-                                {hours.map((hour) => (
-                                  <div key={`snow-${hour.dateTimeEpoch}`} className="row-cell">
-                                    {formatPrecipValue(hour.snow, units)}
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="hourly-row rain-row">
-                                {hours.map((hour) => (
-                                  <div key={`rain-${hour.dateTimeEpoch}`} className="row-cell">
-                                    {formatPrecipValue(hour.rain, units)}
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="hourly-row precip-type-row">
+                              <div className="hourly-grid-row precip-type-row">
+                                <div className="row-label">Type</div>
                                 {hours.map((hour) => {
                                   const type = Array.isArray(hour.precipType) ? hour.precipType[0] : hour.precipType;
                                   return (
@@ -1801,7 +1691,59 @@ function App() {
                                 })}
                               </div>
 
-                              <div className="hourly-row wind-row">
+                              <div className="hourly-grid-row chart-row">
+                                <div className="row-label">Chart</div>
+                                <div className="chart-cells" ref={hourlyChartRef} style={{ gridColumn: `span ${hours.length}` }}>
+                                  {hours.map((hour) => {
+                                    const snowRatio = (hour.snow || 0) / maxSnow;
+                                    const rainRatio = (hour.rain || 0) / maxSnow;
+                                    const tempValue = hour.temp ?? minGrid;
+                                    const tempRatio = (tempValue - minGrid) / gridRange;
+                                    const tempY = plotTop + (1 - tempRatio) * plotHeight;
+                                    return (
+                                      <div key={`snow-${hour.dateTimeEpoch}`} className="chart-cell">
+                                        {showSnow || showRain ? (
+                                          <div className={`bar-group ${showSnow && showRain ? 'dual' : ''}`}>
+                                            {showSnow ? (
+                                              <div className="snow-bar" style={{ height: `${snowRatio * 100}%` }} />
+                                            ) : null}
+                                            {showRain ? (
+                                              <div className="rain-bar" style={{ height: `${rainRatio * 100}%` }} />
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+                                        {showTemp ? (
+                                          <div className="temp-label" style={{ top: `${tempY}px` }}>
+                                            {formatTemp(hour.temp, units)}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                  {showTemp ? <canvas ref={hourlyCanvasRef} className="temp-line-canvas" /> : null}
+                                </div>
+                              </div>
+
+                              <div className="hourly-grid-row snow-row">
+                                <div className="row-label">Snow ({units === 'metric' ? 'cm' : 'in'})</div>
+                                {hours.map((hour) => (
+                                  <div key={`snow-${hour.dateTimeEpoch}`} className="row-cell">
+                                    {formatPrecipValue(hour.snow, units)}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="hourly-grid-row rain-row">
+                                <div className="row-label">Rain ({units === 'metric' ? 'cm' : 'in'})</div>
+                                {hours.map((hour) => (
+                                  <div key={`rain-${hour.dateTimeEpoch}`} className="row-cell">
+                                    {formatPrecipValue(hour.rain, units)}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="hourly-grid-row wind-row">
+                                <div className="row-label">Wind ({units === 'imperial' ? 'mph' : 'km/h'})</div>
                                 {hours.map((hour) => (
                                   <div key={`wind-${hour.dateTimeEpoch}`} className="row-cell">
                                     {formatWindValue(hour.windspeed, units)}
@@ -1951,7 +1893,7 @@ function App() {
                                   <span className="day-metric-line metric-note">{precipType}</span>
                                 </div>
                                 <div className="day-metrics">
-                                  <span className="day-metric-line">
+                                  <span className="day-metric-line temp-line">
                                     <span className="temp-high temp-value-desktop">{formatTemp(visibleOverview?.maxTemp, units)}</span>
                                     <span className="temp-high temp-value-mobile">{formatTempValue(visibleOverview?.maxTemp, units)}</span>
                                     <span className="temp-low temp-value-desktop">{formatTemp(visibleOverview?.minTemp, units)}</span>
