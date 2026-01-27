@@ -2,6 +2,7 @@
 'use strict';
 
 const appConfigDb = require('../models/appConfigDb');
+const { logAdminEvent } = require('./adminLogs');
 
 const defaults = {
   MS_PER_DAY: 24 * 60 * 60 * 1000,
@@ -127,10 +128,12 @@ async function refreshConfigCache() {
     cache.set(doc.key, doc.value);
   });
   values = buildValuesFromCache();
-  console.log(JSON.stringify({
-    event: 'config_cache_refreshed',
-    entries: cache.size,
-  }));
+  logAdminEvent({
+    type: 'Server',
+    status: `Config cache refreshed: ${cache.size}`,
+    location: '',
+    message: '',
+  });
   return getConfigMap();
 }
 

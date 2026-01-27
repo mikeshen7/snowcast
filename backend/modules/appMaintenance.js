@@ -419,10 +419,12 @@ async function removeOrphanHourlyWeather() {
     const result = await hourlyWeatherDb.deleteMany({
       locationId: { $exists: true, $nin: locationIds },
     });
-    console.log(JSON.stringify({
-      event: 'orphan_hourly_weather_removed',
-      count: result.deletedCount || 0,
-    }));
+    logAdminEvent({
+      type: 'Database',
+      status: `Orphan weather removed: ${result.deletedCount || 0}`,
+      location: '',
+      message: '',
+    });
   } catch (err) {
     console.error('*** removeOrphanHourlyWeather error:', err.message);
   }
@@ -434,10 +436,12 @@ async function removeOldHourlyWeather() {
     const config = appConfig.values();
     const cutoff = Date.now() - config.DB_DAYS_TO_KEEP * config.MS_PER_DAY;
     const result = await hourlyWeatherDb.deleteMany({ dateTimeEpoch: { $lt: cutoff } });
-    console.log(JSON.stringify({
-      event: 'old_hourly_weather_removed',
-      count: result.deletedCount || 0,
-    }));
+    logAdminEvent({
+      type: 'Database',
+      status: `Old weather removed: ${result.deletedCount || 0}`,
+      location: '',
+      message: '',
+    });
   } catch (err) {
     console.error('*** removeOldHourlyWeather error:', err.message);
   }
@@ -445,7 +449,12 @@ async function removeOldHourlyWeather() {
 
 // startMaintenance kicks off cleanup, fetch, and backfill schedules.
 function startMaintenance() {
-  console.log('Starting maintenance loops');
+  logAdminEvent({
+    type: 'Server',
+    status: 'Starting maintenance loops',
+    location: '',
+    message: '',
+  });
   removeOrphanHourlyWeather();
   removeOldHourlyWeather();
 

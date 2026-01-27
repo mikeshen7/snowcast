@@ -441,10 +441,12 @@ async function endpointUpdateLocation(request, response, next) {
 // Refresh Locations Cache.
 async function refreshLocationsCache() {
   locationCache.locations = await locationsDb.find({});
-  console.log(JSON.stringify({
-    event: 'locations_cache_refreshed',
-    count: locationCache.locations.length,
-  }));
+  logAdminEvent({
+    type: 'Server',
+    status: `Locations cache refreshed: ${locationCache.locations.length}`,
+    location: '',
+    message: '',
+  });
   return locationCache.locations;
 }
 
