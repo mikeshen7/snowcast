@@ -158,6 +158,20 @@ function getTimezoneOffsetMinutes(date, timeZone) {
   return (utcTime - date.getTime()) / 60000;
 }
 
+function getDateKeyInZone(date, timeZone) {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(date);
+  } catch (error) {
+    return date.toISOString().split('T')[0];
+  }
+}
+
 function getEngagementSessionId() {
   let sessionId = window.localStorage.getItem(ENGAGEMENT_SESSION_KEY);
   if (sessionId) return sessionId;
@@ -358,8 +372,10 @@ function App() {
   const [hourlyModalTimezone, setHourlyModalTimezone] = useState('');
   const [hourlyModalSegments, setHourlyModalSegments] = useState([]);
   const [hourlyChartMetrics, setHourlyChartMetrics] = useState(['snow']);
+  const [hourlyChartFocus, setHourlyChartFocus] = useState(null);
   const hourlyCanvasRef = useRef(null);
   const hourlyChartRef = useRef(null);
+  const hourlyScrollRef = useRef(null);
   const engagementSessionId = useMemo(() => getEngagementSessionId(), []);
   const engagementLocationRef = useRef(null);
   const activeModelRef = useRef(activeModel);
@@ -788,6 +804,7 @@ function App() {
     if (!selectedLocationId) return;
     setLoadingForecast(true);
     setForecastError('');
+    setDailyOverview(null);
 
     getDailyOverview({
       locationId: selectedLocationId,
@@ -851,7 +868,7 @@ function App() {
       }
 
       ctx.setLineDash([]);
-      ctx.strokeStyle = 'rgba(47, 154, 102, 0.95)';
+    ctx.strokeStyle = 'rgba(255, 107, 74, 0.95)';
       ctx.lineWidth = 2;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
@@ -869,7 +886,7 @@ function App() {
       });
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(47, 154, 102, 0.95)';
+    ctx.fillStyle = 'rgba(255, 107, 74, 0.95)';
       hourlyModalData.forEach((hour, index) => {
         const tempValue = hour.temp ?? minGrid;
         const ratio = (tempValue - minGrid) / gridRange;
@@ -891,7 +908,7 @@ function App() {
       const windRange = Math.max(maxWind - minWind, 1);
 
       ctx.setLineDash([4, 5]);
-      ctx.strokeStyle = 'rgba(223, 98, 44, 0.95)';
+      ctx.strokeStyle = 'rgba(54, 197, 182, 0.95)';
       ctx.lineWidth = 2;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
@@ -911,6 +928,39 @@ function App() {
       ctx.setLineDash([]);
     }
   }, [hourlyModalData, hourlyModalOpen, hourlyChartMetrics, units]);
+
+  useEffect(() => {
+    if (!hourlyModalOpen || !hourlyModalDate || !hourlyModalData.length) return;
+    const scrollEl = hourlyScrollRef.current;
+    if (!scrollEl) return;
+    const tz = hourlyModalTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const now = new Date();
+    const todayKey = getDateKeyInZone(now, tz);
+    const modalKey = getDateKeyInZone(hourlyModalDate, tz);
+    if (todayKey !== modalKey) return;
+    const hourFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      hour12: false,
+    });
+    const currentHour = Number(hourFormatter.format(now));
+    if (!Number.isFinite(currentHour)) return;
+    let targetIndex = -1;
+    let closest = Infinity;
+    hourlyModalData.forEach((hour, index) => {
+      const hourValue = Number(hourFormatter.format(new Date(hour.dateTimeEpoch)));
+      const diff = Math.abs(hourValue - currentHour);
+      if (diff < closest) {
+        closest = diff;
+        targetIndex = index;
+      }
+    });
+    if (targetIndex < 0) return;
+    const targetCell = scrollEl.querySelector(`[data-hour-index="${targetIndex}"]`);
+    if (!targetCell) return;
+    const cellCenter = targetCell.offsetLeft + targetCell.offsetWidth / 2;
+    scrollEl.scrollLeft = Math.max(0, cellCenter - scrollEl.clientWidth / 2);
+  }, [hourlyModalOpen, hourlyModalDate, hourlyModalData, hourlyModalTimezone]);
 
   const handleRequestLink = async (event) => {
     event.preventDefault();
@@ -1356,7 +1406,8 @@ function App() {
     setHourlyModalData([]);
     setHourlyModalLoading(true);
     setHourlyModalSegments([]);
-                    setHourlyChartMetrics(['temp', 'snow', 'rain', 'wind']);
+    setHourlyChartMetrics(['temp', 'snow', 'rain', 'wind']);
+    setHourlyChartFocus(null);
 
     try {
       const [segments, hourlyPayload] = await Promise.all([
@@ -1686,6 +1737,7 @@ function App() {
                         const showSnow = hourlyChartMetrics.includes('snow');
                         const showRain = hourlyChartMetrics.includes('rain');
                         const showWind = hourlyChartMetrics.includes('wind');
+                        const focusSeries = hourlyChartFocus;
                         const chartValues = hours.map((hour) => {
                           const snowValue = showSnow ? (hour.snow || 0) : 0;
                           const rainValue = showRain ? (hour.rain || 0) : 0;
@@ -1697,10 +1749,68 @@ function App() {
                         const plotTop = 10;
                         const plotBottom = chartHeight - 16;
                         const plotHeight = plotBottom - plotTop;
+                        const tempValues = hours.map((hour) => hour.temp ?? minGrid);
+                        const snowValues = hours.map((hour) => hour.snow || 0);
+                        const rainValues = hours.map((hour) => hour.rain || 0);
+                        const windValues = hours.map((hour) =>
+                          units === 'metric' ? (hour.windspeed || 0) * WIND_KMH_PER_MPH : hour.windspeed || 0
+                        );
+                        const maxDefaultWind = units === 'metric' ? 15 * WIND_KMH_PER_MPH : 15;
+                        const maxWind = Math.max(...windValues, maxDefaultWind);
+                        const windRange = Math.max(maxWind, 1);
+                        const getMaxIndex = (values) => {
+                          if (!values.length) return -1;
+                          let maxIndex = 0;
+                          let maxValue = values[0] ?? 0;
+                          values.forEach((value, index) => {
+                            if (value > maxValue) {
+                              maxValue = value;
+                              maxIndex = index;
+                            }
+                          });
+                          return maxIndex;
+                        };
+                        const getMinIndex = (values) => {
+                          if (!values.length) return -1;
+                          let minIndex = 0;
+                          let minValue = values[0] ?? 0;
+                          values.forEach((value, index) => {
+                            if (value < minValue) {
+                              minValue = value;
+                              minIndex = index;
+                            }
+                          });
+                          return minIndex;
+                        };
+                        const tempMaxIndex = showTemp ? getMaxIndex(tempValues) : -1;
+                        const tempMinIndex = showTemp ? getMinIndex(tempValues) : -1;
+                        const snowMaxIndex = showSnow ? getMaxIndex(snowValues) : -1;
+                        const rainMaxIndex = showRain ? getMaxIndex(rainValues) : -1;
+                        const windMaxIndex = showWind ? getMaxIndex(windValues) : -1;
+                        const labelAboveTransform = 'translate(-50%, calc(-100% - 2px))';
+                        const labelBelowTransform = 'translate(-50%, 6px)';
+                        const getLabelStyle = (rawTop) => {
+                          const minTop = plotTop + 10;
+                          const maxTop = plotBottom - 10;
+                          if (rawTop <= minTop) {
+                            return { top: `${minTop}px`, transform: labelBelowTransform };
+                          }
+                          if (rawTop >= maxTop) {
+                            return { top: `${maxTop}px`, transform: labelAboveTransform };
+                          }
+                          return { top: `${rawTop}px`, transform: labelAboveTransform };
+                        };
+                        const shouldShowLabel = (series, index, maxIndex, minIndex) => {
+                          if (focusSeries) return focusSeries === series;
+                          if (typeof minIndex === 'number') {
+                            return maxIndex === index || minIndex === index;
+                          }
+                          return maxIndex === index;
+                        };
 
                         return (
                           <div className="hourly-table">
-                            <div className="hourly-scroll">
+                            <div className="hourly-scroll" ref={hourlyScrollRef}>
                               <div className="hourly-grid" style={{ '--hour-count': hours.length }}>
                                 <div className="hourly-grid-row segment-row">
                                   <div className="row-label">Blocks</div>
@@ -1749,17 +1859,21 @@ function App() {
 
                                 <div className="hourly-grid-row time-row">
                                   <div className="row-label">Time</div>
-                                  {hours.map((hour) => {
-                                    const time = new Date(hour.dateTimeEpoch).toLocaleTimeString(undefined, {
-                                      hour: 'numeric',
-                                      timeZone: hourlyModalTimezone || undefined,
-                                    });
+                                {hours.map((hour, index) => {
+                                  const time = new Date(hour.dateTimeEpoch).toLocaleTimeString(undefined, {
+                                    hour: 'numeric',
+                                    timeZone: hourlyModalTimezone || undefined,
+                                  });
                                     return (
-                                      <div key={`time-${hour.dateTimeEpoch}`} className="row-cell">
-                                        {time}
-                                      </div>
-                                    );
-                                  })}
+                                    <div
+                                      key={`time-${hour.dateTimeEpoch}`}
+                                      className="row-cell"
+                                      data-hour-index={index}
+                                    >
+                                      {time}
+                                    </div>
+                                  );
+                                })}
                                 </div>
 
                                 <div className="hourly-grid-row icon-row">
@@ -1790,29 +1904,100 @@ function App() {
                                   <div className="row-label">Chart</div>
                                   <div className="chart-cells" ref={hourlyChartRef} style={{ gridColumn: `span ${hours.length}` }}>
                                     <div className="chart-legend">
-                                      <span className={`legend-item ${showTemp ? 'active' : ''}`}>
+                                      <span
+                                        className={`legend-item ${showTemp ? 'active' : ''} ${
+                                          focusSeries === 'temp' ? 'focused' : ''
+                                        }`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => {
+                                          if (!showTemp) return;
+                                          setHourlyChartFocus((current) => (current === 'temp' ? null : 'temp'));
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            if (!showTemp) return;
+                                            setHourlyChartFocus((current) => (current === 'temp' ? null : 'temp'));
+                                          }
+                                        }}
+                                      >
                                         <span className="legend-swatch temp" />
                                         Temp
                                       </span>
-                                      <span className={`legend-item ${showSnow ? 'active' : ''}`}>
+                                      <span
+                                        className={`legend-item ${showSnow ? 'active' : ''} ${
+                                          focusSeries === 'snow' ? 'focused' : ''
+                                        }`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => {
+                                          if (!showSnow) return;
+                                          setHourlyChartFocus((current) => (current === 'snow' ? null : 'snow'));
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            if (!showSnow) return;
+                                            setHourlyChartFocus((current) => (current === 'snow' ? null : 'snow'));
+                                          }
+                                        }}
+                                      >
                                         <span className="legend-swatch snow" />
                                         Snow
                                       </span>
-                                      <span className={`legend-item ${showRain ? 'active' : ''}`}>
+                                      <span
+                                        className={`legend-item ${showRain ? 'active' : ''} ${
+                                          focusSeries === 'rain' ? 'focused' : ''
+                                        }`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => {
+                                          if (!showRain) return;
+                                          setHourlyChartFocus((current) => (current === 'rain' ? null : 'rain'));
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            if (!showRain) return;
+                                            setHourlyChartFocus((current) => (current === 'rain' ? null : 'rain'));
+                                          }
+                                        }}
+                                      >
                                         <span className="legend-swatch rain" />
                                         Rain
                                       </span>
-                                      <span className={`legend-item ${showWind ? 'active' : ''}`}>
+                                      <span
+                                        className={`legend-item ${showWind ? 'active' : ''} ${
+                                          focusSeries === 'wind' ? 'focused' : ''
+                                        }`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => {
+                                          if (!showWind) return;
+                                          setHourlyChartFocus((current) => (current === 'wind' ? null : 'wind'));
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            if (!showWind) return;
+                                            setHourlyChartFocus((current) => (current === 'wind' ? null : 'wind'));
+                                          }
+                                        }}
+                                      >
                                         <span className="legend-swatch wind" />
                                         Wind
                                       </span>
                                     </div>
-                                    {hours.map((hour) => {
+                                    {hours.map((hour, index) => {
                                       const snowRatio = (hour.snow || 0) / maxSnow;
                                       const rainRatio = (hour.rain || 0) / maxSnow;
-                                      const tempValue = hour.temp ?? minGrid;
+                                      const tempValue = tempValues[index] ?? minGrid;
                                       const tempRatio = (tempValue - minGrid) / gridRange;
                                       const tempY = plotTop + (1 - tempRatio) * plotHeight;
+                                      const windValue = windValues[index] ?? 0;
+                                      const windRatio = Math.max(0, Math.min(1, windValue / windRange));
+                                      const windY = plotTop + (1 - windRatio) * plotHeight;
                                       return (
                                         <div key={`snow-${hour.dateTimeEpoch}`} className="chart-cell">
                                           {showSnow || showRain ? (
@@ -1825,9 +2010,30 @@ function App() {
                                               ) : null}
                                             </div>
                                           ) : null}
-                                          {showTemp ? (
-                                            <div className="temp-label" style={{ top: `${tempY}px` }}>
-                                              {formatTemp(hour.temp, units)}
+                                          {showTemp && shouldShowLabel('temp', index, tempMaxIndex, tempMinIndex) ? (
+                                            <div className="chart-value temp" style={getLabelStyle(tempY)}>
+                                              {formatTemp(tempValue, units)}
+                                            </div>
+                                          ) : null}
+                                          {showSnow && snowValues[index] > 0 && shouldShowLabel('snow', index, snowMaxIndex) ? (
+                                            <div
+                                              className="chart-value snow"
+                                              style={getLabelStyle(plotTop + (1 - snowRatio) * plotHeight)}
+                                            >
+                                              {formatPrecipValue(snowValues[index], units)}
+                                            </div>
+                                          ) : null}
+                                          {showRain && rainValues[index] > 0 && shouldShowLabel('rain', index, rainMaxIndex) ? (
+                                            <div
+                                              className="chart-value rain"
+                                              style={getLabelStyle(plotTop + (1 - rainRatio) * plotHeight)}
+                                            >
+                                              {formatPrecipValue(rainValues[index], units)}
+                                            </div>
+                                          ) : null}
+                                          {showWind && shouldShowLabel('wind', index, windMaxIndex) ? (
+                                            <div className="chart-value wind" style={getLabelStyle(windY)}>
+                                              {formatWind(windValue, units)}
                                             </div>
                                           ) : null}
                                         </div>

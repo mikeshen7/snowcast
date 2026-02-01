@@ -1100,12 +1100,12 @@ select option {
 
 .snow-row .row-label,
 .snow-row .row-cell {
-  color: #2f78c8;
+  color: #6aa6ff;
 }
 
 .rain-row .row-label,
 .rain-row .row-cell {
-  color: #cf6b1f;
+  color: #53d18a;
 }
 
 .icon-row .row-label,
@@ -1250,7 +1250,7 @@ select option {
   display: grid;
   grid-template-columns: repeat(var(--hour-count), minmax(48px, 1fr));
   align-items: end;
-  background: rgba(13, 27, 42, 0.03);
+  background: rgba(20, 40, 70, 0.04);
   border-bottom: 1px solid rgba(13, 27, 42, 0.12);
   overflow: hidden;
 }
@@ -1272,10 +1272,20 @@ select option {
   align-items: center;
   gap: 4px;
   opacity: 0.4;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
 .legend-item.active {
   opacity: 1;
+}
+
+.legend-item.focused {
+  text-decoration: underline;
 }
 
 .legend-swatch {
@@ -1285,19 +1295,19 @@ select option {
 }
 
 .legend-swatch.temp {
-  background: #2f9a66;
+  background: #ff6b4a;
 }
 
 .legend-swatch.snow {
-  background: #4d93e6;
+  background: #6aa6ff;
 }
 
 .legend-swatch.rain {
-  background: #e88823;
+  background: #53d18a;
 }
 
 .legend-swatch.wind {
-  background: #df622c;
+  background: #36c5b6;
 }
 
 .chart-cell {
@@ -1312,7 +1322,7 @@ select option {
 
 .snow-bar {
   width: 55%;
-  background: linear-gradient(180deg, rgba(127, 178, 240, 0.4), rgba(77, 147, 230, 0.9));
+  background: linear-gradient(180deg, rgba(145, 187, 255, 0.45), rgba(106, 166, 255, 0.95));
   border-radius: 6px 6px 0 0;
 }
 
@@ -1332,20 +1342,35 @@ select option {
 
 .rain-bar {
   width: 55%;
-  background: linear-gradient(180deg, rgba(255, 196, 122, 0.4), rgba(232, 136, 35, 0.95));
+  background: linear-gradient(180deg, rgba(132, 224, 176, 0.5), rgba(83, 209, 138, 0.95));
   border-radius: 6px 6px 0 0;
 }
 
-.temp-label {
+.chart-value {
   position: absolute;
   left: 50%;
   transform: translate(-50%, calc(-100% - 2px));
   font-size: 11px;
   font-weight: 600;
-  color: #2f9a66;
   text-shadow: 0 1px 2px rgba(248, 251, 255, 0.8);
   white-space: nowrap;
   z-index: 3;
+}
+
+.chart-value.temp {
+  color: #ff6b4a;
+}
+
+.chart-value.snow {
+  color: #6aa6ff;
+}
+
+.chart-value.rain {
+  color: #53d18a;
+}
+
+.chart-value.wind {
+  color: #36c5b6;
 }
 
 .temp-line-canvas {
