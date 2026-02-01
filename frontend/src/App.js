@@ -2186,9 +2186,11 @@ function App() {
                           ? (snowAmount < precipTotal ? 'mixed' : 'snow')
                           : 'rain')
                         : '';
+                      const precipValueRaw = precipType === 'snow' ? visibleOverview?.snowTotal : visibleOverview?.precipTotal;
+                      const showPrecip = Number.isFinite(precipValueRaw) && precipValueRaw > 0;
                       const footerPrecipValue = precipType === 'snow'
                         ? formatSnow(visibleOverview?.snowTotal, units)
-                        : formatPrecipValue(visibleOverview?.precipTotal, units);
+                        : `${formatPrecipValue(visibleOverview?.precipTotal, units)} ${units === 'metric' ? 'cm' : 'in'}`;
                       const precipIcon = getPrecipIcon(precipType);
                       const cloudIcon = getCloudIcon(visibleOverview?.avgCloudCover);
                       const tileIcon = precipIcon || cloudIcon;
@@ -2215,22 +2217,28 @@ function App() {
                           <div className="day-body">
                             {hasAccess ? (
                               <>
-                                <div className="icon-stack">
+                                <div className="day-icon-cell">
                                   {tileIcon ? (
                                     <img src={tileIcon} alt={precipType || 'cloud cover'} />
                                   ) : (
                                     <div className="icon-placeholder" />
                                   )}
-                                  <span className="day-metric-line">{hasAccess ? footerPrecipValue : ''}</span>
-                                  <span className="day-metric-line metric-note">{precipType}</span>
                                 </div>
-                                <div className="day-metrics">
+                                <div className="day-temp-cell">
                                   <span className="day-metric-line temp-line">
                                     <span className="temp-high temp-value-desktop">{formatTemp(visibleOverview?.maxTemp, units)}</span>
                                     <span className="temp-high temp-value-mobile">{formatTempValue(visibleOverview?.maxTemp, units)}</span>
                                     <span className="temp-low temp-value-desktop">{formatTemp(visibleOverview?.minTemp, units)}</span>
                                     <span className="temp-low temp-value-mobile">{formatTempValue(visibleOverview?.minTemp, units)}</span>
                                   </span>
+                                </div>
+                                {showPrecip ? (
+                                  <div className="day-precip-row">
+                                    <span className="day-metric-line">{hasAccess ? footerPrecipValue : ''}</span>
+                                    <span className="day-metric-line metric-note">{precipType}</span>
+                                  </div>
+                                ) : null}
+                                <div className="day-wind-cell">
                                   <span className="day-metric-line metric-secondary">
                                     {hasAccess ? formatWind(visibleOverview?.maxWindspeed, units) : ''}
                                   </span>

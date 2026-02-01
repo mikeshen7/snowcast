@@ -112,6 +112,19 @@
   .brand-mark {
     display: none;
   }
+
+  .day-modal {
+    max-height: 90vh;
+  }
+
+  .day-wind-cell {
+    display: none;
+  }
+
+  .day-precip-row {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 
 .control {
@@ -799,12 +812,6 @@ select option {
   min-height: 0;
   flex: 1;
   padding-right: 4px;
-}
-
-@media (max-width: 900px) {
-  .day-modal {
-    max-height: 90vh;
-  }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
@@ -1628,7 +1635,7 @@ select option {
   cursor: pointer;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 580px) {
   .alert-form {
     grid-template-columns: 1fr;
     gap: 8px;
@@ -1756,7 +1763,7 @@ select option {
 
 .day-tile {
   border-radius: 12px;
-  padding: 8px;
+  padding: 6px;
   background: var(--snow-50);
   border: 1px solid rgba(13, 27, 42, 0.08);
   box-shadow: 0 12px 24px -22px var(--shadow-strong);
@@ -1858,19 +1865,42 @@ select option {
 
 .day-body {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  justify-content: center;
   position: relative;
   z-index: 2;
 }
 
-.icon-stack {
+.day-icon-cell {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
-  min-width: 40px;
+  justify-content: center;
+}
+
+.day-temp-cell {
+  text-align: center;
+}
+
+.day-precip-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  color: var(--ink-700);
+  font-weight: 600;
+}
+
+.day-precip-row .metric-note {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.day-wind-cell {
+  text-align: center;
 }
 
 .day-date {
@@ -1902,13 +1932,6 @@ select option {
   background: var(--frost-200);
 }
 
-.day-metrics {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
 .day-metric-line {
   display: inline-flex;
   align-items: center;
@@ -1919,8 +1942,7 @@ select option {
 }
 
 .temp-line {
-  flex-wrap: wrap;
-  row-gap: 2px;
+  flex-wrap: nowrap;
 }
 
 .temp-line .temp-high,
@@ -1943,6 +1965,7 @@ select option {
 .metric-secondary {
   display: inline-flex;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .metric-note {
@@ -1999,18 +2022,7 @@ select option {
   }
 }
 
-@media (max-width: 960px) {
-  .day-footer {
-    display: none;
-  }
-
-  .metric-secondary {
-    display: none;
-  }
-
-}
-
-@media (max-width: 700px) {
+@media (max-width: 580px) {
   .desktop-only {
     display: none;
   }
@@ -2063,6 +2075,30 @@ select option {
     gap: 0;
   }
 
+  .day-icon-cell {
+    order: 1;
+  }
+
+  .day-icon-cell {
+    line-height: 1;
+  }
+
+  .day-temp-cell {
+    order: 2;
+  }
+
+  .day-precip-row {
+    order: 3;
+  }
+
+  .day-wind-cell {
+    order: 5;
+  }
+
+  .day-wind-cell {
+    display: none;
+  }
+
   .temp-value-desktop {
     display: none;
   }
@@ -2089,27 +2125,21 @@ select option {
   }
 
 
-  .day-metrics {
-    align-items: center;
-    text-align: center;
-    gap: 2px;
-  }
-
   .week-row {
     gap: 6px;
   }
 
   .day-tile {
-    padding: 6px;
-    min-height: 96px;
+    padding: 4px;
+    min-height: 82px;
   }
 
   .calendar {
-    gap: 4px;
+    gap: 3px;
   }
 
   .calendar-weekdays {
-    gap: 6px;
+    gap: 4px;
   }
 
   .metric-secondary,
@@ -2125,6 +2155,11 @@ select option {
 
   .day-metric-line {
     font-size: 10px;
+    line-height: 1;
+  }
+
+  .day-precip-row {
+    line-height: 1;
   }
 
   .metric-note {
@@ -2132,8 +2167,13 @@ select option {
   }
 
   .precip-icon {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
+  }
+
+  .day-body img {
+    width: 24px;
+    height: 24px;
   }
 
 
@@ -2160,7 +2200,7 @@ select option {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 580px) {
   .day-header {
     font-size: 11px;
   }
