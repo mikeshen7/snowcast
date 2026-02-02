@@ -3,6 +3,7 @@
 
 const mongoose = require('mongoose');
 const adminUserDb = require('../models/adminUserDb');
+const forecastModels = require('./forecastModels');
 const { getFrontendUserFromRequest } = require('./frontendAuth');
 const { getFavoriteLimitForRole, normalizeRole } = require('./roleConfig');
 
@@ -31,7 +32,8 @@ function normalizeUnits(input) {
 function normalizeForecastModel(input) {
   const value = String(input || '').toLowerCase().trim();
   if (value === 'blend') return 'median';
-  const allowed = new Set(['median', 'gfs', 'nbm', 'hrrr']);
+  const allowed = new Set(forecastModels.listModels().map((model) => model.apiModelName));
+  allowed.add('median');
   return allowed.has(value) ? value : '';
 }
 

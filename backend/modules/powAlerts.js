@@ -14,18 +14,20 @@ const { sendEmail } = require('./email');
 const { getLocalPartsFromUtc, localDateTimeToUtcEpoch, shiftLocalDate, formatDateKey } = require('./timezone');
 const { config } = require('../config');
 const { getPowAlertLimitForRole, canCheckPow, normalizeRole } = require('./roleConfig');
+const forecastModels = require('./forecastModels');
 
 const SEND_HOUR_LOCAL = 17;
 const DEFAULT_MODEL = 'median';
 const DEFAULT_ELEVATION = 'mid';
-const MODEL_OPTIONS = new Set(['median', 'gfs', 'nbm', 'hrrr']);
 const ELEVATION_OPTIONS = new Set(['base', 'mid', 'top']);
 
 // Normalize Model.
 function normalizeModel(input) {
   const value = String(input || '').toLowerCase().trim();
   if (value === 'blend') return 'median';
-  return MODEL_OPTIONS.has(value) ? value : '';
+  const allowed = new Set(forecastModels.listModels().map((model) => model.apiModelName));
+  allowed.add('median');
+  return allowed.has(value) ? value : '';
 }
 
 // Normalize Elevation.

@@ -11,7 +11,6 @@ const {
   shiftLocalDate,
 } = require('./timezone');
 
-const FORECAST_MODELS = ['gfs', 'nbm', 'hrrr'];
 const AUTO_MODEL = 'auto';
 const MEDIAN_MODEL = 'median';
 const DEFAULT_MODEL = MEDIAN_MODEL;
@@ -19,11 +18,12 @@ const DEFAULT_ELEVATION = 'mid';
 const ELEVATION_KEYS = ['base', 'mid', 'top'];
 
 // Normalize Forecast Model.
-function normalizeForecastModel(input) {
+function normalizeForecastModel(input, allowedModels = []) {
   const value = String(input || '').toLowerCase().trim();
   if (!value) return '';
   if (value === 'blend' || value === MEDIAN_MODEL) return MEDIAN_MODEL;
-  return FORECAST_MODELS.includes(value) ? value : '';
+  const allowed = new Set((allowedModels || []).map((model) => String(model || '').toLowerCase().trim()).filter(Boolean));
+  return allowed.has(value) ? value : '';
 }
 
 // Normalize Elevation Key.
@@ -52,23 +52,23 @@ function resolvePrecipType(precip, snow) {
 }
 
 // select Representative Doc helper.
-function selectRepresentativeDoc(docs) {
+function selectRepresentativeDoc(docs, modelOrder = []) {
   if (!docs.length) return null;
   // priority helper.
-  const priority = new Map(FORECAST_MODELS.map((model, index) => [model, index]));
+  const priority = new Map((modelOrder || []).map((model, index) => [model, index]));
   // sorted helper.
   const sorted = [...docs].sort((a, b) => {
     const aKey = a.model || 'auto';
     const bKey = b.model || 'auto';
-    const aRank = priority.has(aKey) ? priority.get(aKey) : FORECAST_MODELS.length;
-    const bRank = priority.has(bKey) ? priority.get(bKey) : FORECAST_MODELS.length;
+    const aRank = priority.has(aKey) ? priority.get(aKey) : modelOrder.length;
+    const bRank = priority.has(bKey) ? priority.get(bKey) : modelOrder.length;
     return aRank - bRank;
   });
   return sorted[0];
 }
 
 // median Hourly Docs helper.
-function medianHourlyDocs(docs) {
+function medianHourlyDocs(docs, modelOrder = []) {
   const grouped = new Map();
   for (const doc of docs || []) {
     if (doc.dateTimeEpoch == null) continue;
@@ -83,7 +83,7 @@ function medianHourlyDocs(docs) {
   const blended = [];
   for (const [epoch, modelMap] of grouped.entries()) {
     const modelDocs = Array.from(modelMap.values());
-    const base = selectRepresentativeDoc(modelDocs);
+    const base = selectRepresentativeDoc(modelDocs, modelOrder);
     if (!base) continue;
     const numericFields = [
       'precipProb',
@@ -191,6 +191,7 @@ async function fetchLocationDetail(locationId) {
     baseElevationFt: doc.baseElevationFt ?? null,
     midElevationFt: doc.midElevationFt ?? null,
     topElevationFt: doc.topElevationFt ?? null,
+    apiModelNames: Array.isArray(doc.apiModelNames) ? doc.apiModelNames : [],
   };
 }
 
@@ -225,8 +226,14 @@ async function queryHourlyDocs(options) {
   const config = appConfig.values();
   const { MS_PER_DAY, WEATHER_API_MAX_DAYS_BACK, WEATHER_API_MAX_DAYS_FORWARD } = config;
   const filter = { locationId };
-  const resolvedModel = normalizeForecastModel(model) || DEFAULT_MODEL;
+  const locationModels = Array.isArray(location?.apiModelNames)
+    ? location.apiModelNames.map((value) => String(value || '').toLowerCase().trim()).filter(Boolean)
+    : [];
+  const resolvedModel = normalizeForecastModel(model, locationModels) || DEFAULT_MODEL;
   const resolvedElevation = normalizeElevationKey(elevationKey) || DEFAULT_ELEVATION;
+  if (!locationModels.length) {
+    return { docs: [], location };
+  }
 
   let effectiveStart;
   let effectiveEnd;
@@ -283,7 +290,7 @@ async function queryHourlyDocs(options) {
   }
   if (resolvedModel === MEDIAN_MODEL) {
     const modelFilter = [
-      { model: { $in: [...FORECAST_MODELS, AUTO_MODEL] } },
+      { model: { $in: [...locationModels, AUTO_MODEL] } },
       { model: { $exists: false } },
       { model: null },
     ];
@@ -303,7 +310,7 @@ async function queryHourlyDocs(options) {
     .sort({ dateTimeEpoch: sortDirection })
     .lean();
 
-  let finalDocs = resolvedModel === MEDIAN_MODEL ? medianHourlyDocs(docs) : docs;
+  let finalDocs = resolvedModel === MEDIAN_MODEL ? medianHourlyDocs(docs, locationModels) : docs;
   if (resolvedModel === MEDIAN_MODEL && sortDirection === -1) {
     finalDocs = [...finalDocs].sort((a, b) => b.dateTimeEpoch - a.dateTimeEpoch);
   }

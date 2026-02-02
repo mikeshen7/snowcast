@@ -5,6 +5,8 @@ const locationsDb = require('../models/locationsDb');
 const { seedLocations } = require('../models/seedLocations');
 const { lookupCountryRegion } = require('./geoLookup');
 const appConfig = require('./appConfig');
+const forecastModels = require('./forecastModels');
+const tzLookup = require('tz-lookup');
 const weatherApi = require('./weatherApi');
 const { logAdminEvent } = require('./adminLogs');
 
@@ -34,6 +36,26 @@ function parseElevation(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeModelNames(input) {
+  if (!Array.isArray(input)) return [];
+  const allowed = new Set(forecastModels.listModels().map((model) => model.apiModelName));
+  const seen = new Set();
+  const normalized = [];
+  input.forEach((value) => {
+    const name = String(value || '').toLowerCase().trim();
+    if (!name || seen.has(name) || (allowed.size && !allowed.has(name))) return;
+    seen.add(name);
+    normalized.push(name);
+  });
+  return normalized;
+}
+
+function normalizeRefreshHours(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return fallback;
+  return numeric;
+}
+
 // haversine Km helper.
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371; // Earth radius in km
@@ -56,6 +78,15 @@ async function deriveCountryRegion(lat, lon) {
   } catch (error) {
     console.error('*** locations deriveCountryRegion error:', error.message);
     return { country: 'Unknown', region: '' };
+  }
+}
+
+function deriveTimezone(lat, lon) {
+  try {
+    return tzLookup(lat, lon);
+  } catch (error) {
+    console.error('*** locations deriveTimezone error:', error.message);
+    return 'UTC';
   }
 }
 
@@ -87,9 +118,9 @@ async function ensureLocationNotTooClose(lat, lon, excludeId) {
 // Handle Create Location.
 async function endpointCreateLocation(request, response, next) {
   try {
-    const { name, lat, lon, tz_iana, isSkiResort, baseElevationFt, midElevationFt, topElevationFt } = request.body || {};
-    if (!name || lat === undefined || lon === undefined || !tz_iana) {
-      return response.status(400).send('name, lat, lon, and tz_iana are required');
+    const { name, lat, lon, isSkiResort, baseElevationFt, midElevationFt, topElevationFt, apiModelNames, refreshHours } = request.body || {};
+    if (!name || lat === undefined || lon === undefined) {
+      return response.status(400).send('name, lat, and lon are required');
     }
 
     const numericLat = Number(lat);
@@ -101,6 +132,7 @@ async function endpointCreateLocation(request, response, next) {
     await ensureLocationNotTooClose(numericLat, numericLon);
 
     const { country, region } = await deriveCountryRegion(numericLat, numericLon);
+    const tz_iana = deriveTimezone(numericLat, numericLon);
 
     const doc = await locationsDb.create({
       name: String(name).trim(),
@@ -108,11 +140,13 @@ async function endpointCreateLocation(request, response, next) {
       region: String(region).trim(),
       lat: numericLat,
       lon: numericLon,
-      tz_iana: String(tz_iana).trim(),
+      tz_iana,
       isSkiResort: parseBoolean(isSkiResort) ?? false,
       baseElevationFt: parseElevation(baseElevationFt),
       midElevationFt: parseElevation(midElevationFt),
       topElevationFt: parseElevation(topElevationFt),
+      apiModelNames: normalizeModelNames(apiModelNames),
+      refreshHours: normalizeRefreshHours(refreshHours, 8),
     });
 
     await refreshLocationsCache();
@@ -142,6 +176,9 @@ async function endpointCreateLocation(request, response, next) {
       baseElevationFt: doc.baseElevationFt ?? null,
       midElevationFt: doc.midElevationFt ?? null,
       topElevationFt: doc.topElevationFt ?? null,
+      apiModelNames: Array.isArray(doc.apiModelNames) ? doc.apiModelNames : [],
+      refreshHours: doc.refreshHours ?? 8,
+      lastFetchByModel: doc.lastFetchByModel || {},
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -265,6 +302,9 @@ async function endpointSearchLocations(request, response, next) {
       baseElevationFt: doc.baseElevationFt ?? null,
       midElevationFt: doc.midElevationFt ?? null,
       topElevationFt: doc.topElevationFt ?? null,
+      apiModelNames: Array.isArray(doc.apiModelNames) ? doc.apiModelNames : [],
+      refreshHours: doc.refreshHours ?? 8,
+      lastFetchByModel: doc.lastFetchByModel || {},
     }));
 
     if (page > 0) {
@@ -323,6 +363,9 @@ async function endpointNearestLocation(request, response, next) {
       baseElevationFt: nearest.baseElevationFt ?? null,
       midElevationFt: nearest.midElevationFt ?? null,
       topElevationFt: nearest.topElevationFt ?? null,
+      apiModelNames: Array.isArray(nearest.apiModelNames) ? nearest.apiModelNames : [],
+      refreshHours: nearest.refreshHours ?? 8,
+      lastFetchByModel: nearest.lastFetchByModel || {},
       distanceKm: nearestDistance,
     });
   } catch (error) {
@@ -367,9 +410,9 @@ async function endpointUpdateLocation(request, response, next) {
       return response.status(400).send('Location id is required');
     }
 
-    const { name, lat, lon, tz_iana, isSkiResort, baseElevationFt, midElevationFt, topElevationFt } = request.body || {};
-    if (!name || lat === undefined || lon === undefined || !tz_iana) {
-      return response.status(400).send('name, lat, lon, and tz_iana are required');
+    const { name, lat, lon, isSkiResort, baseElevationFt, midElevationFt, topElevationFt, apiModelNames, refreshHours } = request.body || {};
+    if (!name || lat === undefined || lon === undefined) {
+      return response.status(400).send('name, lat, and lon are required');
     }
 
     const numericLat = Number(lat);
@@ -381,6 +424,7 @@ async function endpointUpdateLocation(request, response, next) {
     await ensureLocationNotTooClose(numericLat, numericLon, id);
 
     const { country, region } = await deriveCountryRegion(numericLat, numericLon);
+    const tz_iana = deriveTimezone(numericLat, numericLon);
 
     const updated = await locationsDb.findByIdAndUpdate(
       id,
@@ -390,11 +434,13 @@ async function endpointUpdateLocation(request, response, next) {
         region: String(region).trim(),
         lat: numericLat,
         lon: numericLon,
-        tz_iana: String(tz_iana).trim(),
+        tz_iana,
         isSkiResort: parseBoolean(isSkiResort) ?? false,
         baseElevationFt: parseElevation(baseElevationFt),
         midElevationFt: parseElevation(midElevationFt),
         topElevationFt: parseElevation(topElevationFt),
+        apiModelNames: normalizeModelNames(apiModelNames),
+        refreshHours: normalizeRefreshHours(refreshHours, 8),
       },
       { new: true }
     );
@@ -423,6 +469,9 @@ async function endpointUpdateLocation(request, response, next) {
       baseElevationFt: updated.baseElevationFt ?? null,
       midElevationFt: updated.midElevationFt ?? null,
       topElevationFt: updated.topElevationFt ?? null,
+      apiModelNames: Array.isArray(updated.apiModelNames) ? updated.apiModelNames : [],
+      refreshHours: updated.refreshHours ?? 8,
+      lastFetchByModel: updated.lastFetchByModel || {},
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     });
@@ -488,6 +537,9 @@ async function endpointListBackfillLocations(request, response, next) {
       baseElevationFt: doc.baseElevationFt ?? null,
       midElevationFt: doc.midElevationFt ?? null,
       topElevationFt: doc.topElevationFt ?? null,
+      apiModelNames: Array.isArray(doc.apiModelNames) ? doc.apiModelNames : [],
+      refreshHours: doc.refreshHours ?? 8,
+      lastFetchByModel: doc.lastFetchByModel || {},
     }));
     return response.status(200).send(results);
   } catch (error) {
@@ -516,6 +568,26 @@ async function ensureSeedLocations() {
   return true;
 }
 
+async function updateAllLocationTimezones() {
+  const docs = await locationsDb.find({}).select({ _id: 1, lat: 1, lon: 1, tz_iana: 1 }).lean();
+  if (!docs.length) return 0;
+  const ops = [];
+  docs.forEach((doc) => {
+    if (doc.lat == null || doc.lon == null) return;
+    const nextTz = deriveTimezone(Number(doc.lat), Number(doc.lon));
+    if (!nextTz || nextTz === doc.tz_iana) return;
+    ops.push({
+      updateOne: {
+        filter: { _id: doc._id },
+        update: { $set: { tz_iana: nextTz } },
+      },
+    });
+  });
+  if (!ops.length) return 0;
+  const result = await locationsDb.bulkWrite(ops, { ordered: false });
+  return result.modifiedCount || 0;
+}
+
 module.exports = {
   endpointSearchLocations,
   endpointListBackfillLocations,
@@ -527,9 +599,13 @@ module.exports = {
   endpointUpdateLocation,
   startLocationMaintenance: async function startLocationMaintenance() {
     const didSeed = await ensureSeedLocations();
+    const tzUpdates = await updateAllLocationTimezones();
     await refreshLocationsCache();
     if (didSeed) {
       console.log('Seeded locations on startup.');
+    }
+    if (tzUpdates) {
+      console.log(`Updated ${tzUpdates} location timezones on startup.`);
     }
     setInterval(refreshLocationsCache, 24 * 60 * 60 * 1000);
   },

@@ -8,6 +8,15 @@ const { config } = require('../config');
 const databaseName = config.db.name;
 
 // Seed locations from Locations.xlsx (2026-01-11)
+const MODEL_PRESETS_BY_COUNTRY = {
+  'United States': ['gfs_hrrr', 'ncep_nbm_conus', 'gfs_seamless'],
+  Canada: ['gem_hrdps_continental', 'gem_regional', 'gfs_seamless'],
+  Japan: ['jma_msm', 'jma_gsm', 'ecmwf_ifs'],
+  Europe: ['icon_d2', 'icon_global', 'ecmwf_ifs'],
+};
+
+const FAST_REFRESH_REGIONS = new Set(['Washington', 'British Columbia']);
+
 const seedLocations = [
   { name: 'Alta', country: 'United States', region: 'Utah', lat: 40.588, lon: -111.6378, tz_iana: 'America/Denver', isSkiResort: true, baseElevationFt: 8530, midElevationFt: 9799, topElevationFt: 11068 },
   { name: 'Arapahoe Basin', country: 'United States', region: 'Colorado', lat: 39.6423, lon: -105.8717, tz_iana: 'America/Denver', isSkiResort: true, baseElevationFt: 10520, midElevationFt: 11785, topElevationFt: 13050 },
@@ -45,7 +54,11 @@ const seedLocations = [
   { name: 'Vail', country: 'United States', region: 'Colorado', lat: 39.6061, lon: -106.355, tz_iana: 'America/Denver', isSkiResort: true, baseElevationFt: 8120, midElevationFt: 9800, topElevationFt: 11480 },
   { name: 'Whistler Blackcomb', country: 'Canada', region: 'British Columbia', lat: 50.1164, lon: -122.9548, tz_iana: 'America/Vancouver', isSkiResort: true, baseElevationFt: 2214, midElevationFt: 4854, topElevationFt: 7494 },
   { name: 'Winter Park', country: 'United States', region: 'Colorado', lat: 39.8868, lon: -105.7625, tz_iana: 'America/Denver', isSkiResort: true, baseElevationFt: 9000, midElevationFt: 10527, topElevationFt: 12060 },
-];
+].map((loc) => ({
+  ...loc,
+  refreshHours: FAST_REFRESH_REGIONS.has(loc.region) ? 2 : 8,
+  apiModelNames: MODEL_PRESETS_BY_COUNTRY[loc.country] || [],
+}));
 
 async function seed() {
   try {

@@ -2,6 +2,7 @@
 'use strict';
 
 const hourlyWeatherDb = require('../models/hourlyWeatherDb');
+const locationsDb = require('../models/locationsDb');
 const weatherApi = require('./weatherApi');
 const appConfig = require('./appConfig');
 const roleConfig = require('./roleConfig');
@@ -39,17 +40,62 @@ function formatDate(date) {
   return date.toISOString().split('T')[0];
 }
 
+function normalizeModelList(models) {
+  if (!Array.isArray(models)) return [];
+  const seen = new Set();
+  return models
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter((value) => value && !seen.has(value) && (seen.add(value), true));
+}
+
+function getLastFetchMs(location, modelName) {
+  const map = location?.lastFetchByModel;
+  const raw = map?.get?.(modelName) ?? map?.[modelName] ?? null;
+  if (!raw) return null;
+  const dt = raw instanceof Date ? raw : new Date(raw);
+  const ms = dt.getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function shouldFetchLocationModel(location, modelConfig, now = Date.now()) {
+  if (!modelConfig) return false;
+  const lastMs = getLastFetchMs(location, modelConfig.apiModelName);
+  const locationHours = Math.max(0, Number(location?.refreshHours) || 0);
+  const modelHours = Math.max(0, Number(modelConfig.refreshHours) || 0);
+  const refreshHours = Math.max(locationHours, modelHours);
+  if (!lastMs) return true;
+  if (!refreshHours) return true;
+  const refreshMs = refreshHours * 60 * 60 * 1000;
+  return now - lastMs >= refreshMs;
+}
+
+async function updateLocationModelFetchTimes(location, modelNames, when = new Date()) {
+  const updates = {};
+  (modelNames || []).forEach((name) => {
+    updates[`lastFetchByModel.${name}`] = when;
+  });
+  if (!Object.keys(updates).length) return;
+  await locationsDb.updateOne({ _id: location._id }, { $set: updates });
+  if (location.lastFetchByModel?.set) {
+    (modelNames || []).forEach((name) => location.lastFetchByModel.set(name, when));
+  } else {
+    location.lastFetchByModel = location.lastFetchByModel || {};
+    (modelNames || []).forEach((name) => {
+      location.lastFetchByModel[name] = when;
+    });
+  }
+}
+
 // fetchAllWeather iterates every cached location and fetches weather data.
 async function fetchAllWeather(options = {}) {
   const context = options.context || 'forecast';
   const requestOptions = { ...options, context };
-  if (!requestOptions.startDate && !requestOptions.endDate && requestOptions.forecastDays == null) {
-    requestOptions.forecastDays = 16; // pull max available forecast window
-  }
   let locations = getCachedLocations();
   if (!locations || locations.length === 0) {
     locations = await refreshLocationsCache();
   }
+  const modelConfigs = forecastModels.listModels();
+  const modelConfigMap = new Map(modelConfigs.map((model) => [model.apiModelName, model]));
   console.log(JSON.stringify({
     event: 'weather_fetch_all',
     context,
@@ -57,8 +103,9 @@ async function fetchAllWeather(options = {}) {
     options: requestOptions,
   }));
   if (context === 'backfill') {
-    const models = forecastModels.listModels().filter((model) => model.enabled);
     for (const location of locations || []) {
+      const locationModels = normalizeModelList(location.apiModelNames);
+      if (!locationModels.length) continue;
       const jobId = randomUUID();
       logAdminEvent({
         jobId,
@@ -72,11 +119,13 @@ async function fetchAllWeather(options = {}) {
       let errorDetail = null;
       const tasks = [];
       for (const elevation of weatherApi.listLocationElevations(location)) {
-        for (const model of models) {
+        for (const modelName of locationModels) {
+          const modelConfig = modelConfigMap.get(modelName);
+          if (!modelConfig) continue;
           const task = weatherApi
             .fetchLocation(location, {
               ...requestOptions,
-              model: model.code,
+              model: modelConfig.apiModelName,
               elevationKey: elevation.key,
               elevationFt: elevation.elevationFt,
             })
@@ -86,7 +135,7 @@ async function fetchAllWeather(options = {}) {
             })
             .catch((err) => {
               errorDetail = {
-                model: model.code,
+                model: modelConfig.apiModelName,
                 elevationKey: elevation.key,
                 message: err.message,
               };
@@ -95,7 +144,7 @@ async function fetchAllWeather(options = {}) {
                 locationId: String(location._id),
                 name: location.name,
                 context,
-                model: model.code,
+                model: modelConfig.apiModelName,
                 elevationKey: elevation.key,
                 error: err.message,
               }));
@@ -127,10 +176,9 @@ async function fetchAllWeather(options = {}) {
     return;
   }
 
-  const models = forecastModels.listModels().filter((model) => model.enabled);
-  const fetchableModels = models.filter((model) => forecastModels.shouldFetchModel(model.code));
-  const modelSuccess = new Map();
   for (const location of locations || []) {
+    const locationModels = normalizeModelList(location.apiModelNames);
+    if (!locationModels.length) continue;
     const jobId = randomUUID();
     logAdminEvent({
       jobId,
@@ -142,22 +190,27 @@ async function fetchAllWeather(options = {}) {
     });
     let errorDetail = null;
     const tasks = [];
-    for (const model of fetchableModels) {
+    const successfulModels = new Set();
+    for (const modelName of locationModels) {
+      const modelConfig = modelConfigMap.get(modelName);
+      if (!modelConfig) continue;
+      if (!shouldFetchLocationModel(location, modelConfig)) continue;
       for (const elevation of weatherApi.listLocationElevations(location)) {
         const task = weatherApi
           .fetchLocation(location, {
             ...requestOptions,
-            model: model.code,
+            model: modelConfig.apiModelName,
+            forecastDays: modelConfig.maxForecastDays,
             elevationKey: elevation.key,
             elevationFt: elevation.elevationFt,
           })
           .then(() => {
-            modelSuccess.set(model.code, (modelSuccess.get(model.code) || 0) + 1);
+            successfulModels.add(modelConfig.apiModelName);
             return { ok: true };
           })
           .catch((err) => {
             errorDetail = {
-              model: model.code,
+              model: modelConfig.apiModelName,
               elevationKey: elevation.key,
               message: err.message,
             };
@@ -166,7 +219,7 @@ async function fetchAllWeather(options = {}) {
               locationId: String(location._id),
               name: location.name,
               context,
-              model: model.code,
+              model: modelConfig.apiModelName,
               elevationKey: elevation.key,
               error: err.message,
             }));
@@ -176,6 +229,9 @@ async function fetchAllWeather(options = {}) {
       }
     }
     await Promise.all(tasks);
+    if (successfulModels.size) {
+      await updateLocationModelFetchTimes(location, Array.from(successfulModels), new Date());
+    }
     if (errorDetail) {
       logAdminEvent({
         jobId,
@@ -192,12 +248,6 @@ async function fetchAllWeather(options = {}) {
         location: location.name,
         message: '',
       });
-    }
-  }
-  for (const model of fetchableModels) {
-    const successCount = modelSuccess.get(model.code) || 0;
-    if (successCount > 0) {
-      await forecastModels.markModelFetched(model.code);
     }
   }
 }
@@ -239,8 +289,11 @@ async function backfillLocations({ locationIds = [] } = {}) {
     startDate,
     endDate,
   }));
-  const models = forecastModels.listModels().filter((model) => model.enabled);
+  const modelConfigs = forecastModels.listModels();
+  const modelConfigMap = new Map(modelConfigs.map((model) => [model.apiModelName, model]));
   for (const location of selected) {
+    const locationModels = normalizeModelList(location.apiModelNames);
+    if (!locationModels.length) continue;
     const jobId = randomUUID();
     logAdminEvent({
       jobId,
@@ -254,13 +307,15 @@ async function backfillLocations({ locationIds = [] } = {}) {
     let errorDetail = null;
     const tasks = [];
     for (const elevation of weatherApi.listLocationElevations(location)) {
-      for (const model of models) {
+      for (const modelName of locationModels) {
+        const modelConfig = modelConfigMap.get(modelName);
+        if (!modelConfig) continue;
         const task = weatherApi
           .fetchLocation(location, {
             startDate,
             endDate,
             context: 'backfill',
-            model: model.code,
+            model: modelConfig.apiModelName,
             elevationKey: elevation.key,
             elevationFt: elevation.elevationFt,
           })
@@ -270,7 +325,7 @@ async function backfillLocations({ locationIds = [] } = {}) {
           })
           .catch((err) => {
             errorDetail = {
-              model: model.code,
+              model: modelConfig.apiModelName,
               elevationKey: elevation.key,
               message: err.message,
             };
@@ -324,9 +379,11 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
   }
 
   // models helper.
-  const models = forecastModels.listModels().filter((model) => model.enabled);
-  const modelSuccess = new Map();
+  const modelConfigs = forecastModels.listModels();
+  const modelConfigMap = new Map(modelConfigs.map((model) => [model.apiModelName, model]));
   for (const location of selected) {
+    const locationModels = normalizeModelList(location.apiModelNames);
+    if (!locationModels.length) continue;
     const jobId = randomUUID();
     logAdminEvent({
       jobId,
@@ -338,26 +395,28 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
     });
     let errorDetail = null;
     const tasks = [];
-    for (const model of models) {
-      const modelTasks = [];
-      const shouldFetch = force || forecastModels.shouldFetchModel(model.code);
+    const successfulModels = new Set();
+    for (const modelName of locationModels) {
+      const modelConfig = modelConfigMap.get(modelName);
+      if (!modelConfig) continue;
+      const shouldFetch = force || shouldFetchLocationModel(location, modelConfig);
       if (!shouldFetch) continue;
       for (const elevation of weatherApi.listLocationElevations(location)) {
         const task = weatherApi
           .fetchLocation(location, {
-            forecastDays: 16,
+            forecastDays: modelConfig.maxForecastDays,
             context: 'forecast',
-            model: model.code,
+            model: modelConfig.apiModelName,
             elevationKey: elevation.key,
             elevationFt: elevation.elevationFt,
           })
           .then(() => {
-            modelSuccess.set(model.code, (modelSuccess.get(model.code) || 0) + 1);
+            successfulModels.add(modelConfig.apiModelName);
             return { ok: true };
           })
           .catch((err) => {
             errorDetail = {
-              model: model.code,
+              model: modelConfig.apiModelName,
               elevationKey: elevation.key,
               message: err.message,
             };
@@ -366,17 +425,19 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
               locationId: String(location._id),
               name: location.name,
               context: 'forecast',
-              model: model.code,
+              model: modelConfig.apiModelName,
               elevationKey: elevation.key,
               error: err.message,
             }));
             return { ok: false };
           });
         tasks.push(task);
-        modelTasks.push(task);
       }
     }
     await Promise.all(tasks);
+    if (successfulModels.size) {
+      await updateLocationModelFetchTimes(location, Array.from(successfulModels), new Date());
+    }
     if (errorDetail) {
       logAdminEvent({
         jobId,
@@ -393,12 +454,6 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
         location: location.name,
         message: '',
       });
-    }
-  }
-  for (const model of models) {
-    const successCount = modelSuccess.get(model.code) || 0;
-    if (successCount > 0) {
-      await forecastModels.markModelFetched(model.code);
     }
   }
 

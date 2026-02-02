@@ -6,13 +6,11 @@ const { Schema } = mongoose;
 
 const forecastModelSchema = new Schema(
   {
-    code: { type: String, required: true, unique: true, trim: true, lowercase: true },
-    label: { type: String, default: '' },
-    apiModelParam: { type: String, default: '' },
-    maxForecastDays: { type: Number, default: 16 },
-    refreshHours: { type: Number, default: 2 },
-    enabled: { type: Boolean, default: true },
-    lastFetchedAt: { type: Date, default: null },
+    apiModelName: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    displayName: { type: String, required: true, trim: true },
+    description: { type: String, default: '', trim: true },
+    maxForecastDays: { type: Number, required: true },
+    refreshHours: { type: Number, required: true },
   },
   {
     collection: 'forecastModels',
@@ -20,7 +18,7 @@ const forecastModelSchema = new Schema(
   }
 );
 
-forecastModelSchema.index({ code: 1 });
+forecastModelSchema.index({ apiModelName: 1 });
 
 const forecastModelDb = mongoose.model('forecastModels', forecastModelSchema, 'forecastModels');
 

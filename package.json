@@ -12,5 +12,8 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3"
+  },
+  "dependencies": {
+    "tz-lookup": "^6.1.25"
   }
 }

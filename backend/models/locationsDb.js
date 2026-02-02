@@ -18,6 +18,9 @@ const locationsSchema = new Schema(
     baseElevationFt: { type: Number, required: true },
     midElevationFt: { type: Number, required: true },
     topElevationFt: { type: Number, required: true },
+    apiModelNames: { type: [String], default: [] },
+    refreshHours: { type: Number, default: 8 },
+    lastFetchByModel: { type: Map, of: Date, default: {} },
   },
   {
     collection: collectionName,

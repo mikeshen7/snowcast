@@ -12,12 +12,7 @@ const {
   getLocalPartsFromUtc,
 } = require('./timezone');
 const BASE_URL = 'https://api.open-meteo.com/v1/forecast';
-const FORECAST_MODELS = ['gfs', 'nbm', 'hrrr'];
-const MODEL_PARAM_MAP = {
-  gfs: 'gfs_seamless',
-  nbm: 'ncep_nbm_conus',
-  hrrr: 'gfs_hrrr',
-};
+const FORECAST_MODELS = [];
 const DEFAULT_ELEVATION_KEY = 'mid';
 const ELEVATION_KEYS = ['base', 'mid', 'top'];
 const FEET_TO_METERS = 0.3048;
@@ -123,8 +118,7 @@ function buildForecastUrl(location, options = {}) {
   });
   if (options.model) {
     const rawModel = String(options.model).trim();
-    const mapped = forecastModels.getModelApiParam(rawModel) || MODEL_PARAM_MAP[rawModel] || rawModel;
-    params.set('models', mapped);
+    params.set('models', rawModel);
   }
   const elevationFt = Number.isFinite(options.elevationFt)
     ? Number(options.elevationFt)
@@ -258,7 +252,10 @@ async function fetchLocationModels(location, options = {}) {
     ? options.models
     : options.model
       ? [options.model]
-      : FORECAST_MODELS;
+      : Array.isArray(location?.apiModelNames) && location.apiModelNames.length
+        ? location.apiModelNames
+        : FORECAST_MODELS;
+  if (!models.length) return [];
   const tasks = models.map((model) => fetchLocation(location, { ...options, model }));
   const results = await Promise.all(tasks);
   return results.filter(Boolean);

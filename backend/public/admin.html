@@ -48,6 +48,8 @@
     select { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
     .form-actions { display: flex; gap: 0.5rem; align-items: center; }
     .derived-meta { margin-top: 0.5rem; display: flex; gap: 1.5rem; font-weight: 600; }
+    .model-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.35rem; }
+    .model-choice { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
     .toast {
       position: fixed;
       top: 1rem;
@@ -306,15 +308,15 @@
         <thead>
           <tr>
             <th>Name</th>
-            <th>Country</th>
             <th>Region</th>
-            <th>Lat</th>
-            <th>Lon</th>
             <th>TZ</th>
             <th>Base ft</th>
             <th>Mid ft</th>
             <th>Top ft</th>
             <th>Resort?</th>
+            <th>Refresh Hrs</th>
+            <th>Models</th>
+            <th>Last Fetch</th>
             <th></th>
           </tr>
         </thead>
@@ -524,13 +526,11 @@
       <table id="modelsTable" style="display:none;">
         <thead>
           <tr>
-            <th>Code</th>
-            <th>Label</th>
-            <th>API Param</th>
+            <th>API Model Name</th>
+            <th>Display Name</th>
+            <th>Description</th>
             <th>Max Forecast Days</th>
             <th>Refresh Hours</th>
-            <th>Enabled</th>
-            <th>Last Fetch</th>
             <th></th>
           </tr>
         </thead>
@@ -647,9 +647,6 @@
         <label>Name<input type="text" id="modalNewName" required /></label>
         <label>Latitude<input type="number" step="any" id="modalNewLat" required /></label>
         <label>Longitude<input type="number" step="any" id="modalNewLon" required /></label>
-        <label>Time Zone
-          <select id="modalNewTz" required></select>
-        </label>
         <label>Is Ski Resort?
           <select id="modalNewResort">
             <option value="false">No</option>
@@ -659,6 +656,10 @@
         <label>Base Elevation (ft)<input type="number" step="1" id="modalNewBase" required /></label>
         <label>Mid Elevation (ft)<input type="number" step="1" id="modalNewMid" required /></label>
         <label>Top Elevation (ft)<input type="number" step="1" id="modalNewTop" required /></label>
+        <label>Refresh Hours<input type="number" step="1" min="0" id="modalRefreshHours" required /></label>
+        <label class="stacked-label">Models
+          <div id="locationModelsList" class="model-list"></div>
+        </label>
         <div class="form-actions">
           <button type="button" class="ghost" id="closeAddLocationBtn">Close</button>
           <button type="submit" id="modalSaveLocationBtn">Add Location</button>
@@ -796,6 +797,7 @@
     let hasLoadedLogs = false;
     let hasLoadedQueue = false;
     let hasLoadedModels = false;
+    let forecastModelsCatalog = [];
     const authGate = document.getElementById('authGate');
     const appContent = document.getElementById('appContent');
     const loginEmailInput = document.getElementById('loginEmail');
@@ -1310,11 +1312,12 @@
     const modalNameInput = document.getElementById('modalNewName');
     const modalLatInput = document.getElementById('modalNewLat');
     const modalLonInput = document.getElementById('modalNewLon');
-    const modalTzSelect = document.getElementById('modalNewTz');
     const modalResortSelect = document.getElementById('modalNewResort');
     const modalBaseInput = document.getElementById('modalNewBase');
     const modalMidInput = document.getElementById('modalNewMid');
     const modalTopInput = document.getElementById('modalNewTop');
+    const modalRefreshInput = document.getElementById('modalRefreshHours');
+    const locationModelsList = document.getElementById('locationModelsList');
     const modalDerivedCountryEl = document.getElementById('modalDerivedCountry');
     const modalDerivedRegionEl = document.getElementById('modalDerivedRegion');
     const modalSaveLocationBtn = document.getElementById('modalSaveLocationBtn');
@@ -1332,7 +1335,6 @@
     const fetchForecastLocations = document.getElementById('fetchForecastLocations');
     const fetchForecastStatus = document.getElementById('fetchForecastStatus');
     const fetchForecastSubmitBtn = document.getElementById('fetchForecastSubmitBtn');
-    populateModalTimeZones();
     if (modalLatInput) modalLatInput.addEventListener('blur', fetchModalDerivedMetadata);
     if (modalLonInput) modalLonInput.addEventListener('blur', fetchModalDerivedMetadata);
     const locationPageSize = document.getElementById('locationPageSize');
@@ -1805,18 +1807,19 @@
       });
       sorted.forEach((loc) => {
         const isReadOnly = !(Array.isArray(sessionUser?.roles) && sessionUser.roles.includes('admin'));
+        const lastFetch = formatDateTimeLocal(getLastLocationFetch(loc));
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${loc.name}</td>
-          <td>${loc.country || ''}</td>
           <td>${loc.region || ''}</td>
-          <td>${loc.lat}</td>
-          <td>${loc.lon}</td>
           <td>${loc.tz_iana || ''}</td>
           <td>${loc.baseElevationFt ?? ''}</td>
           <td>${loc.midElevationFt ?? ''}</td>
           <td>${loc.topElevationFt ?? ''}</td>
           <td>${loc.isSkiResort ? 'Yes' : 'No'}</td>
+          <td>${loc.refreshHours ?? ''}</td>
+          <td>${(loc.apiModelNames || []).join(', ')}</td>
+          <td>${lastFetch}</td>
           <td>
             <button type="button" class="edit-btn" ${isReadOnly ? 'style="display:none;"' : ''}>Edit</button>
             <button type="button" class="delete-btn" data-id="${loc.id}" ${isReadOnly ? 'style="display:none;"' : ''}>Delete</button>
@@ -1833,6 +1836,23 @@
         locationBody.appendChild(tr);
       });
       locationTable.style.display = locations.length ? 'table' : 'none';
+    }
+
+    function getLastLocationFetch(location) {
+      const map = location?.lastFetchByModel || {};
+      const values = Object.values(map || {});
+      if (!values.length) return null;
+      let latest = null;
+      values.forEach((value) => {
+        if (!value) return;
+        const dt = value instanceof Date ? value : new Date(value);
+        const ms = dt.getTime();
+        if (Number.isNaN(ms)) return;
+        if (!latest || ms > latest.getTime()) {
+          latest = dt;
+        }
+      });
+      return latest;
     }
 
     function populateBackfillLocations() {
@@ -2153,23 +2173,27 @@
 
     async function submitModalLocation(event) {
       event.preventDefault();
-      if (!modalNameInput || !modalLatInput || !modalLonInput || !modalTzSelect || !modalResortSelect || !modalBaseInput || !modalMidInput || !modalTopInput) return;
+      if (!modalNameInput || !modalLatInput || !modalLonInput || !modalResortSelect || !modalBaseInput || !modalMidInput || !modalTopInput || !modalRefreshInput) return;
       const editingId = modalEditingId ? modalEditingId.value : '';
       const payload = {
         name: modalNameInput.value.trim(),
         lat: Number(modalLatInput.value),
         lon: Number(modalLonInput.value),
-        tz_iana: modalTzSelect.value,
         isSkiResort: modalResortSelect.value === 'true',
         baseElevationFt: Number(modalBaseInput.value),
         midElevationFt: Number(modalMidInput.value),
         topElevationFt: Number(modalTopInput.value),
+        refreshHours: Number(modalRefreshInput.value),
+        apiModelNames: readLocationModelSelection(),
       };
-      if (!payload.name || Number.isNaN(payload.lat) || Number.isNaN(payload.lon) || !payload.tz_iana) {
+      if (!payload.name || Number.isNaN(payload.lat) || Number.isNaN(payload.lon)) {
         return setLocationStatus('All required fields must be filled', true);
       }
       if (Number.isNaN(payload.baseElevationFt) || Number.isNaN(payload.midElevationFt) || Number.isNaN(payload.topElevationFt)) {
         return setLocationStatus('All elevation fields are required', true);
+      }
+      if (Number.isNaN(payload.refreshHours) || payload.refreshHours < 0) {
+        return setLocationStatus('Refresh hours must be 0 or greater', true);
       }
       setLocationStatus(editingId ? 'Saving location...' : 'Creating location...');
       try {
@@ -2198,8 +2222,8 @@
       if (addLocationForm) addLocationForm.reset();
       if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = 'Unknown';
       if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = '-';
-      populateModalTimeZones();
-      setModalTimeZoneValue(DEFAULT_TIME_ZONE);
+      if (modalRefreshInput) modalRefreshInput.value = 8;
+      ensureForecastModelsForModal([]);
       openModal(addLocationModal, '#modalNewName');
     }
 
@@ -2214,20 +2238,18 @@
 
     function startEditLocation(location) {
       if (!addLocationModal) return;
-      if (modalTzSelect && !modalTzSelect.options.length) {
-        populateModalTimeZones();
-      }
       if (addLocationModalTitle) addLocationModalTitle.textContent = 'Edit Location';
       if (modalSaveLocationBtn) modalSaveLocationBtn.textContent = 'Save Location';
       if (modalEditingId) modalEditingId.value = location.id;
       if (modalNameInput) modalNameInput.value = location.name || '';
       if (modalLatInput) modalLatInput.value = location.lat ?? '';
       if (modalLonInput) modalLonInput.value = location.lon ?? '';
-      setModalTimeZoneValue(location.tz_iana);
       if (modalResortSelect) modalResortSelect.value = location.isSkiResort ? 'true' : 'false';
       if (modalBaseInput) modalBaseInput.value = location.baseElevationFt ?? '';
       if (modalMidInput) modalMidInput.value = location.midElevationFt ?? '';
       if (modalTopInput) modalTopInput.value = location.topElevationFt ?? '';
+      if (modalRefreshInput) modalRefreshInput.value = location.refreshHours ?? 8;
+      ensureForecastModelsForModal(location.apiModelNames || []);
       if (modalDerivedCountryEl) modalDerivedCountryEl.textContent = location.country || 'Unknown';
       if (modalDerivedRegionEl) modalDerivedRegionEl.textContent = location.region || '-';
       openModal(addLocationModal, '#modalNewName');
@@ -3085,14 +3107,18 @@
       }
       logs.forEach((log) => {
         const tr = document.createElement('tr');
-        if (String(log.status || '').toLowerCase() === 'error') {
+        const typeValue = String(log.type || '').toLowerCase();
+        const statusValue = String(log.status || '');
+        const isForcedError = typeValue === 'backfill_error' || typeValue === 'queue_error';
+        const displayStatus = isForcedError ? 'Error' : statusValue;
+        if (isForcedError || statusValue.toLowerCase() === 'error') {
           tr.classList.add('log-error');
         }
         tr.innerHTML = `
           <td>${formatDateTimeLocal(log.createdAt)}</td>
           <td>${log.type || ''}</td>
           <td>${log.location || ''}</td>
-          <td>${log.status || ''}</td>
+          <td>${displayStatus || ''}</td>
           <td>${log.message || ''}</td>
         `;
         logsTableBody.appendChild(tr);
@@ -3183,11 +3209,36 @@
           throw new Error(text || 'Failed to load models');
         }
         const data = await res.json();
+        forecastModelsCatalog = Array.isArray(data) ? data : [];
+        populateAdminModelSelects();
         renderForecastModels(Array.isArray(data) ? data : []);
         setStatusToast(modelsStatus, `Loaded ${Array.isArray(data) ? data.length : 0} models`);
       } catch (err) {
         setStatusToast(modelsStatus, err.message, true);
       }
+    }
+
+    function populateAdminModelSelects() {
+      const selects = [dailyModelSelect, hourlyModelSelect].filter(Boolean);
+      selects.forEach((select) => {
+        const current = select.value;
+        select.innerHTML = '<option value="">All models</option>';
+        const medianOption = document.createElement('option');
+        medianOption.value = 'median';
+        medianOption.textContent = 'Median';
+        select.appendChild(medianOption);
+        (forecastModelsCatalog || []).forEach((model) => {
+          const name = model?.apiModelName || '';
+          if (!name) return;
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = model.displayName || name;
+          select.appendChild(opt);
+        });
+        if (current) {
+          select.value = current;
+        }
+      });
     }
 
     function renderForecastModels(models) {
@@ -3198,23 +3249,77 @@
       }
       models.forEach((model) => {
         const tr = document.createElement('tr');
-        const code = model.code || '';
+        const apiModelName = model.apiModelName || '';
         tr.innerHTML = `
-          <td>${code}</td>
-          <td><input type="text" value="${model.label || ''}" data-field="label" /></td>
-          <td><input type="text" value="${model.apiModelParam || ''}" data-field="apiModelParam" /></td>
+          <td>${apiModelName}</td>
+          <td><input type="text" value="${model.displayName || ''}" data-field="displayName" /></td>
+          <td><input type="text" value="${model.description || ''}" data-field="description" /></td>
           <td><input type="number" min="1" value="${model.maxForecastDays ?? ''}" data-field="maxForecastDays" style="width:90px;" /></td>
           <td><input type="number" min="0" value="${model.refreshHours ?? ''}" data-field="refreshHours" style="width:90px;" /></td>
-          <td><input type="checkbox" data-field="enabled" ${model.enabled ? 'checked' : ''} /></td>
-          <td>${formatDateTimeLocal(model.lastFetchedAt)}</td>
           <td><button type="button" class="small-btn" data-action="save">Save</button></td>
         `;
         tr.querySelector('[data-action="save"]').addEventListener('click', () => {
-          saveForecastModel(tr, code);
+          saveForecastModel(tr, apiModelName);
         });
         modelsTableBody.appendChild(tr);
       });
       modelsTable.style.display = 'table';
+    }
+
+    function renderLocationModelOptions(selectedModels = []) {
+      if (!locationModelsList) return;
+      const orderMap = new Map();
+      (selectedModels || []).forEach((name, index) => {
+        const key = String(name || '').toLowerCase().trim();
+        if (!key) return;
+        orderMap.set(key, index + 1);
+      });
+      locationModelsList.innerHTML = '';
+      (forecastModelsCatalog || []).forEach((model) => {
+        const apiModelName = String(model?.apiModelName || '').toLowerCase().trim();
+        if (!apiModelName) return;
+        const checked = orderMap.has(apiModelName);
+        const orderValue = checked ? orderMap.get(apiModelName) : '';
+        const row = document.createElement('div');
+        row.className = 'model-choice';
+        row.innerHTML = `
+          <label style="display:flex; align-items:center; gap:0.4rem;">
+            <input type="checkbox" data-model="${apiModelName}" ${checked ? 'checked' : ''} />
+            ${model.displayName || apiModelName}
+          </label>
+          <input type="number" min="1" class="model-order" data-order="${apiModelName}" value="${orderValue}" style="width:60px;" />
+        `;
+        locationModelsList.appendChild(row);
+      });
+    }
+
+    function readLocationModelSelection() {
+      if (!locationModelsList) return [];
+      const rows = Array.from(locationModelsList.querySelectorAll('.model-choice'));
+      const selections = [];
+      rows.forEach((row, index) => {
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (!checkbox || !checkbox.checked) return;
+        const name = checkbox.dataset.model || '';
+        const orderInput = row.querySelector('input[type="number"]');
+        const orderRaw = orderInput ? Number(orderInput.value) : NaN;
+        const order = Number.isFinite(orderRaw) && orderRaw > 0 ? orderRaw : null;
+        selections.push({ name, order, index });
+      });
+      selections.sort((a, b) => {
+        if (a.order != null && b.order != null) return a.order - b.order;
+        if (a.order != null) return -1;
+        if (b.order != null) return 1;
+        return a.index - b.index;
+      });
+      return selections.map((entry) => entry.name);
+    }
+
+    async function ensureForecastModelsForModal(selectedModels) {
+      if (!forecastModelsCatalog.length) {
+        await loadForecastModels(true);
+      }
+      renderLocationModelOptions(selectedModels);
     }
 
     async function saveForecastModel(row, code) {
@@ -3449,106 +3554,6 @@
       showToast(message, isError);
     }
 
-    function populateModalTimeZones() {
-      if (!modalTzSelect) return;
-      const zones = readAllTimeZones();
-      const offsets = new Map();
-      const preferredZones = [
-        'America/Los_Angeles',
-        'America/Denver',
-        'America/Chicago',
-        'America/New_York',
-        'America/Phoenix',
-        'America/Anchorage',
-        'Pacific/Honolulu',
-      ];
-      preferredZones.forEach((zone) => {
-        const info = buildTimeZoneInfo(zone);
-        if (!offsets.has(info.offsetMinutes)) {
-          offsets.set(info.offsetMinutes, info);
-        }
-      });
-      zones.forEach((zone) => {
-        const info = buildTimeZoneInfo(zone);
-        if (!offsets.has(info.offsetMinutes)) {
-          offsets.set(info.offsetMinutes, info);
-        }
-      });
-      const defaultInfo = buildTimeZoneInfo(DEFAULT_TIME_ZONE);
-      offsets.set(defaultInfo.offsetMinutes, defaultInfo);
-      const entries = [...offsets.values()].sort((a, b) => a.offsetMinutes - b.offsetMinutes);
-      modalTzSelect.innerHTML = entries
-        .map((entry) => `<option value="${entry.zone}">${entry.label}</option>`)
-        .join('');
-      modalTzSelect.value = DEFAULT_TIME_ZONE;
-    }
-
-    function readAllTimeZones() {
-      if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
-        try {
-          const zones = Intl.supportedValuesOf('timeZone');
-          if (zones?.length) return zones;
-        } catch (err) {
-          // ignore
-        }
-      }
-      return [
-        'America/Los_Angeles',
-        'America/Denver',
-        'America/Chicago',
-        'America/New_York',
-        'Europe/London',
-        'Europe/Paris',
-        'Asia/Tokyo',
-        'Australia/Sydney',
-      ];
-    }
-
-    function buildTimeZoneInfo(zone) {
-      const { label, offsetMinutes } = computeOffsetLabel(zone);
-      return { zone, label, offsetMinutes };
-    }
-
-    function computeOffsetLabel(zone) {
-      try {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-          timeZone: zone,
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZoneName: 'shortOffset',
-        });
-        const parts = formatter.formatToParts(new Date());
-        const tzName = parts.find((part) => part.type === 'timeZoneName')?.value || 'GMT';
-        const match = tzName.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/i);
-        let offsetMinutes = 0;
-        let label = tzName;
-        if (match) {
-          const sign = match[1] === '-' ? -1 : 1;
-          const hours = parseInt(match[2], 10);
-          const minutes = parseInt(match[3] || '0', 10);
-          offsetMinutes = sign * (hours * 60 + minutes);
-          const hh = String(hours).padStart(2, '0');
-          const mm = String(minutes).padStart(2, '0');
-          label = `GMT${sign === -1 ? '-' : '+'}${hh}:${mm}`;
-        }
-        return { label: `(${label}) ${zone}`, offsetMinutes };
-      } catch (err) {
-        return { label: zone, offsetMinutes: 0 };
-      }
-    }
-
-    function setModalTimeZoneValue(value) {
-      if (!modalTzSelect) return;
-      const target = value || DEFAULT_TIME_ZONE;
-      if (![...modalTzSelect.options].some((opt) => opt.value === target)) {
-        const info = buildTimeZoneInfo(target);
-        const opt = document.createElement('option');
-        opt.value = target;
-        opt.textContent = info.label;
-        modalTzSelect.appendChild(opt);
-      }
-      modalTzSelect.value = target;
-    }
 
     function computeOffsetsForRange(startValue, endValue, timeZone) {
       const zone = timeZone || DEFAULT_TIME_ZONE;

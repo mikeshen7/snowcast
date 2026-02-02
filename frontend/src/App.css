@@ -453,6 +453,76 @@ select option {
   gap: 20px;
 }
 
+
+.comparison-block {
+  background: rgba(13, 27, 42, 0.04);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comparison-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.comparison-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.comparison-hint {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.comparison-card {
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid rgba(13, 27, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comparison-card h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.comparison-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-500);
+  gap: 8px;
+}
+
+.comparison-row strong {
+  color: var(--ink-900);
+  font-weight: 600;
+  text-align: right;
+}
+
+.comparison-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
 .overview-heading {
   display: flex;
   flex-wrap: wrap;
@@ -509,14 +579,15 @@ select option {
 .calendar-controls {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  column-gap: 28px;
+  row-gap: 10px;
   flex-wrap: wrap;
 }
 
 .calendar-control {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1788,6 +1859,12 @@ select option {
   box-shadow: 0 14px 26px -20px rgba(47, 95, 168, 0.5);
 }
 
+.day-tile.bluebird-day {
+  background: linear-gradient(180deg, rgba(255, 214, 102, 0.35), rgba(255, 248, 214, 0.95));
+  border-color: rgba(214, 154, 26, 0.45);
+  box-shadow: 0 14px 26px -20px rgba(214, 154, 26, 0.45);
+}
+
 .pow-badge {
   position: absolute;
   top: 6px;
@@ -1810,8 +1887,16 @@ select option {
   color: var(--ink-700);
 }
 
+.day-tile.bluebird-day .day-header {
+  color: var(--ink-800);
+}
+
 .day-tile.snow-day .day-date,
 .day-tile.pow-day .day-date {
+  color: var(--ink-900);
+}
+
+.day-tile.bluebird-day .day-date {
   color: var(--ink-900);
 }
 

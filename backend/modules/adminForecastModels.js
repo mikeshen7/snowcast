@@ -17,8 +17,8 @@ async function listForecastModels(request, response, next) {
 // Update Forecast Model.
 async function updateForecastModel(request, response, next) {
   try {
-    const code = request.params.code;
-    const updated = await forecastModels.updateModel(code, request.body || {});
+    const apiModelName = request.params.code;
+    const updated = await forecastModels.updateModel(apiModelName, request.body || {});
     return response.status(200).send(updated);
   } catch (error) {
     console.error('*** adminForecastModels update error:', error.message);

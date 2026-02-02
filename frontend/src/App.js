@@ -64,22 +64,7 @@ const WIND_KMH_PER_MPH = 1.60934;
 const WINDY_THRESHOLD_MPH = 15;
 const CM_PER_INCH = 2.54;
 const DEFAULT_FORECAST_MODEL = 'median';
-const DEFAULT_FORECAST_MODEL_OPTIONS = [
-  { value: 'median', label: 'Median' },
-  { value: 'nbm', label: 'NOAA Blend' },
-  { value: 'gfs', label: 'NOAA Global' },
-  { value: 'hrrr', label: 'NOAA HRRR' },
-];
-
-const MODEL_DESCRIPTION_MAP = {
-  median: 'Median of available models.',
-  gfs: 'Long-range global.',
-  gfs_seamless: 'Long-range global.',
-  nbm: 'Blend of national models.',
-  ncep_nbm_conus: 'Blend of national models.',
-  hrrr: 'Short-range high-res.',
-  gfs_hrrr: 'Short-range high-res.',
-};
+const DEFAULT_FORECAST_MODEL_OPTIONS = [{ value: 'median', label: 'Median', description: 'Median of available models.' }];
 const DEFAULT_FORECAST_ELEVATION = 'mid';
 const FORECAST_ELEVATION_OPTIONS = [
   { value: 'top', label: 'Top' },
@@ -119,9 +104,45 @@ function normalizeForecastModel(value, options = DEFAULT_FORECAST_MODEL_OPTIONS)
   return allowed.has(next) ? next : DEFAULT_FORECAST_MODEL;
 }
 
-function getModelDescription(value) {
-  if (!value) return 'Forecast model description unavailable.';
-  return MODEL_DESCRIPTION_MAP[value] || 'Forecast model description unavailable.';
+function getModelDescription(value, catalogMap) {
+  if (!value) return '';
+  if (value === 'median') return 'Median of available models.';
+  const entry = catalogMap?.get?.(value);
+  const description = entry?.description ? String(entry.description) : '';
+  return description;
+}
+
+function buildForecastModelOptions(location, catalogMap) {
+  const models = Array.isArray(location?.apiModelNames) ? location.apiModelNames : [];
+  const seen = new Set();
+  const options = [...DEFAULT_FORECAST_MODEL_OPTIONS];
+  models.forEach((name) => {
+    const key = String(name || '').toLowerCase().trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    const entry = catalogMap?.get?.(key);
+    options.push({
+      value: key,
+      label: String(entry?.displayName || key),
+      description: String(entry?.description || ''),
+    });
+  });
+  return options;
+}
+
+function formatRelativeUpdateLabel(date) {
+  if (!date) return '';
+  const nowMs = Date.now();
+  const diffMs = Math.max(0, nowMs - date.getTime());
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) {
+    return `Updated ${minutes}m ago`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `Updated ${hours}h ago`;
+  }
+  return `Updated ${date.toLocaleString()}`;
 }
 
 function normalizeForecastElevation(value) {
@@ -358,6 +379,7 @@ function App() {
     return normalizeForecastModel(stored || DEFAULT_FORECAST_MODEL);
   });
   const [forecastElevation, setForecastElevation] = useState(DEFAULT_FORECAST_ELEVATION);
+  const [forecastModelCatalog, setForecastModelCatalog] = useState([]);
   const [forecastModelOptions, setForecastModelOptions] = useState(DEFAULT_FORECAST_MODEL_OPTIONS);
   const [activeElevation, setActiveElevation] = useState(() => {
     const stored = window.localStorage.getItem(ELEVATION_STORAGE_KEY);
@@ -380,6 +402,13 @@ function App() {
   const engagementLocationRef = useRef(null);
   const activeModelRef = useRef(activeModel);
   const forecastModelRef = useRef(forecastModel);
+  const forecastModelCatalogMap = useMemo(() => {
+    const entries = (forecastModelCatalog || []).map((model) => [
+      String(model?.apiModelName || '').toLowerCase(),
+      model,
+    ]);
+    return new Map(entries.filter(([key]) => key));
+  }, [forecastModelCatalog]);
 
   const role = resolveRole(user);
   const [today] = useState(() => new Date());
@@ -414,17 +443,44 @@ function App() {
     return [...favoriteLocations, ...rest];
   }, [favorites, locations]);
 
-  const selectedLocationName = useMemo(() => {
-    if (!selectedLocationId) return '';
-    const match = locations.find((loc) => String(loc.id) === String(selectedLocationId));
-    return match?.name || '';
+  const selectedLocation = useMemo(() => {
+    if (!selectedLocationId) return null;
+    return locations.find((loc) => String(loc.id) === String(selectedLocationId)) || null;
   }, [locations, selectedLocationId]);
 
+  const selectedLocationName = useMemo(() => {
+    return selectedLocation?.name || '';
+  }, [selectedLocation]);
+
   const selectedLocationTimezone = useMemo(() => {
-    if (!selectedLocationId) return '';
-    const match = locations.find((loc) => String(loc.id) === String(selectedLocationId));
-    return match?.tz_iana || '';
-  }, [locations, selectedLocationId]);
+    return selectedLocation?.tz_iana || '';
+  }, [selectedLocation]);
+
+  const hasLocationModels = useMemo(() => {
+    return Array.isArray(selectedLocation?.apiModelNames) && selectedLocation.apiModelNames.length > 0;
+  }, [selectedLocation]);
+
+  const lastFetchLabel = useMemo(() => {
+    const map = selectedLocation?.lastFetchByModel;
+    if (!map) return '';
+    const values = Array.isArray(map)
+      ? map
+      : map instanceof Map
+        ? Array.from(map.values())
+        : Object.values(map);
+    if (!values.length) return '';
+    let latest = null;
+    values.forEach((value) => {
+      if (!value) return;
+      const dt = value instanceof Date ? value : new Date(value);
+      const ms = dt.getTime();
+      if (Number.isNaN(ms)) return;
+      if (!latest || ms > latest.getTime()) {
+        latest = dt;
+      }
+    });
+    return latest ? formatRelativeUpdateLabel(latest) : '';
+  }, [selectedLocation]);
 
   const applyModelSelection = useCallback((nextModel) => {
     setActiveModel(nextModel);
@@ -443,40 +499,27 @@ function App() {
   }, [forecastModel]);
 
   useEffect(() => {
+    const nextOptions = buildForecastModelOptions(selectedLocation, forecastModelCatalogMap);
+    setForecastModelOptions(nextOptions);
+    const currentActive = activeModelRef.current;
+    const currentPreferred = forecastModelRef.current;
+    const normalizedActive = normalizeForecastModel(currentActive, nextOptions);
+    if (normalizedActive !== currentActive) {
+      setActiveModel(normalizedActive);
+    }
+    const normalizedPreferred = normalizeForecastModel(currentPreferred, nextOptions);
+    if (normalizedPreferred !== currentPreferred) {
+      setForecastModel(normalizedPreferred);
+    }
+  }, [selectedLocation, forecastModelCatalogMap]);
+
+  useEffect(() => {
     let isMounted = true;
     getForecastModels()
       .then((models) => {
         if (!isMounted) return;
         const apiModels = Array.isArray(models) ? models : [];
-        const priorityOrder = ['median', 'nbm', 'gfs', 'hrrr'];
-        const merged = [
-          { value: DEFAULT_FORECAST_MODEL, label: 'Median' },
-          ...apiModels
-            .filter((model) => model?.code)
-            .map((model) => ({
-              value: String(model.code).toLowerCase(),
-              label: String(model.label || model.code),
-            })),
-        ].sort((a, b) => {
-          const aIndex = priorityOrder.indexOf(a.value);
-          const bIndex = priorityOrder.indexOf(b.value);
-          if (aIndex !== -1 || bIndex !== -1) {
-            return (aIndex === -1 ? priorityOrder.length : aIndex)
-              - (bIndex === -1 ? priorityOrder.length : bIndex);
-          }
-          return a.label.localeCompare(b.label);
-        });
-        setForecastModelOptions(merged);
-        const currentActive = activeModelRef.current;
-        const currentPreferred = forecastModelRef.current;
-        const normalizedActive = normalizeForecastModel(currentActive, merged);
-        if (normalizedActive !== currentActive) {
-          setActiveModel(normalizedActive);
-        }
-        const normalizedPreferred = normalizeForecastModel(currentPreferred, merged);
-        if (normalizedPreferred !== currentPreferred) {
-          setForecastModel(normalizedPreferred);
-        }
+        setForecastModelCatalog(apiModels);
       })
       .catch(() => {});
     return () => {
@@ -1397,7 +1440,7 @@ function App() {
 
   const loadCombinedModal = async (date, modelOverride, elevationOverride) => {
     if (!selectedLocationId) return;
-    const selectedModel = normalizeForecastModel(modelOverride || activeModel || forecastModel);
+    const selectedModel = normalizeForecastModel(modelOverride || activeModel || forecastModel, forecastModelOptions);
     const selectedElevation = normalizeForecastElevation(
       elevationOverride || activeElevation || forecastElevation
     );
@@ -1457,7 +1500,10 @@ function App() {
   const handleHourlyWeekShift = async (direction, event) => {
     event.stopPropagation();
     if (!hourlyModalDate) return;
-    const nextDate = shiftDateByDay(hourlyModalDate, direction * 7);
+    const weekStart = shiftDateByDay(hourlyModalDate, -hourlyModalDate.getDay());
+    const nextDate = direction > 0
+      ? shiftDateByDay(weekStart, 7) // next week Sunday
+      : shiftDateByDay(weekStart, -1); // previous week Saturday
     if (!isDayVisible(nextDate)) return;
     sendEngagement('hourly_shifted', { date: toISODate(nextDate) }, selectedLocationId);
     await loadCombinedModal(nextDate, activeModel, activeElevation);
@@ -1652,7 +1698,7 @@ function App() {
                           <span className="model-tooltip" role="tooltip">
                             {forecastModelOptions.map((option) => (
                               <span key={`model-tip-detail-${option.value}`} className="model-tooltip-item">
-                                <strong>{option.label}:</strong> {getModelDescription(option.value)}
+                                <strong>{option.label}:</strong> {getModelDescription(option.value, forecastModelCatalogMap)}
                               </span>
                             ))}
                           </span>
@@ -1662,7 +1708,7 @@ function App() {
                         className="modal-model-select"
                         value={activeModel}
                         onChange={(event) => {
-                          const nextModel = normalizeForecastModel(event.target.value);
+                          const nextModel = normalizeForecastModel(event.target.value, forecastModelOptions);
                           applyModelSelection(nextModel);
                           if (hourlyModalDate) {
                             loadCombinedModal(hourlyModalDate, nextModel, activeElevation);
@@ -2084,177 +2130,187 @@ function App() {
           ) : null}
 
           {activeView === 'calendar' ? (
-            <div className="calendar">
-              <div className="calendar-month">
-                <span className="current-month">
-                  {displayMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-                </span>
-                <div className="calendar-controls">
-                  <div className="calendar-control">
-                    <div className="calendar-label-row">
-                      <span className="calendar-model-label">Model</span>
-                      <span className="model-info" tabIndex={0} aria-label="Model descriptions">
-                        ⓘ
-                        <span className="model-tooltip" role="tooltip">
-                          {forecastModelOptions.map((option) => (
-                            <span key={`model-tip-${option.value}`} className="model-tooltip-item">
-                              <strong>{option.label}:</strong> {getModelDescription(option.value)}
-                            </span>
-                          ))}
+            <>
+              {selectedLocation && !hasLocationModels ? (
+                <div className="error-banner">No models configured for this location.</div>
+              ) : null}
+              <div className="calendar">
+                <div className="calendar-month">
+                  <span className="current-month">
+                    {displayMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                  </span>
+                  <div className="calendar-controls">
+                    <div className="calendar-control">
+                      <div className="calendar-label-row">
+                        <span className="calendar-model-label">Model</span>
+                        <span className="model-info" tabIndex={0} aria-label="Model descriptions">
+                          ⓘ
+                          <span className="model-tooltip" role="tooltip">
+                            {forecastModelOptions.map((option) => (
+                              <span key={`model-tip-${option.value}`} className="model-tooltip-item">
+                                <strong>{option.label}:</strong> {getModelDescription(option.value, forecastModelCatalogMap)}
+                              </span>
+                            ))}
+                          </span>
                         </span>
-                      </span>
+                      </div>
+                      <select
+                        className="calendar-model-select"
+                        value={activeModel}
+                        onChange={(event) => {
+                        const nextModel = normalizeForecastModel(event.target.value, forecastModelOptions);
+                          applyModelSelection(nextModel);
+                        }}
+                        aria-label="Forecast model"
+                      >
+                        {forecastModelOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <select
-                      className="calendar-model-select"
-                      value={activeModel}
-                      onChange={(event) => {
-                        const nextModel = normalizeForecastModel(event.target.value);
-                        applyModelSelection(nextModel);
-                      }}
-                      aria-label="Forecast model"
-                    >
-                      {forecastModelOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="calendar-control">
-                    <span className="calendar-model-label">Elevation</span>
-                    <select
-                      className="calendar-model-select"
-                      value={activeElevation}
-                      onChange={(event) => {
-                        const nextElevation = normalizeForecastElevation(event.target.value);
-                        applyElevationSelection(nextElevation);
-                      }}
-                      aria-label="Forecast elevation"
-                    >
-                      {FORECAST_ELEVATION_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="calendar-control">
+                      <span className="calendar-model-label">Elevation</span>
+                      <select
+                        className="calendar-model-select"
+                        value={activeElevation}
+                        onChange={(event) => {
+                          const nextElevation = normalizeForecastElevation(event.target.value);
+                          applyElevationSelection(nextElevation);
+                        }}
+                        aria-label="Forecast elevation"
+                      >
+                        {FORECAST_ELEVATION_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="calendar-weekdays">
-                <button
-                  type="button"
-                  className="weekday-nav"
-                  onClick={() => handleMonthShift(-1)}
-                  aria-label="Previous month"
-                >
-                  ‹
-                </button>
-                {calendar.weeks[0].map((date) => (
-                  <div className="weekday-label" key={`weekday-${date.toISOString()}`}>
-                    {formatWeekday(date)}
+                <div className="calendar-weekdays">
+                  <button
+                    type="button"
+                    className="weekday-nav"
+                    onClick={() => handleMonthShift(-1)}
+                    aria-label="Previous month"
+                  >
+                    ‹
+                  </button>
+                  {calendar.weeks[0].map((date) => (
+                    <div className="weekday-label" key={`weekday-${date.toISOString()}`}>
+                      {formatWeekday(date)}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="weekday-nav"
+                    onClick={() => handleMonthShift(1)}
+                    aria-label="Next month"
+                  >
+                    ›
+                  </button>
+                </div>
+                {calendar.weeks.map((week, index) => (
+                  <div className="week-block" key={`week-${index}`}>
+                    <div className="week-row">
+                      {week.map((date) => {
+                        const key = toISODate(date);
+                        const overview = overviewByDate[key];
+                        const prevKey = toISODate(shiftDateByDay(date, -1));
+                        const prevOverview = overviewByDate[prevKey];
+                        const hasAccess = isDayVisible(date);
+                        const isPast = differenceInDays(date, today) < 0;
+                        const hasOverview = Boolean(overview);
+                        const isToday = differenceInDays(date, today) === 0;
+                        const visibleOverview = hasAccess ? overview : null;
+                        const lockedLabel = '🔒';
+                        const snowAmount = Number(visibleOverview?.snowTotal ?? 0);
+                        const isPowDay = hasAccess && hasOverview && snowAmount >= 3;
+                        const isSnowDay = hasAccess && hasOverview && snowAmount >= 1;
+                        const prevSnowAmount = Number(prevOverview?.snowTotal ?? 0);
+                        const windyValueMph = Number(visibleOverview?.maxWindspeed ?? 0);
+                        const isWindy = hasAccess && hasOverview && Number.isFinite(windyValueMph) && windyValueMph >= WINDY_THRESHOLD_MPH;
+                        const precipTotal = Number(visibleOverview?.precipTotal ?? 0);
+                        const precipType = hasAccess && hasOverview && precipTotal > 0
+                          ? (snowAmount > 0
+                            ? (snowAmount < precipTotal ? 'mixed' : 'snow')
+                            : 'rain')
+                          : '';
+                        const precipValueRaw = precipType === 'snow' ? visibleOverview?.snowTotal : visibleOverview?.precipTotal;
+                        const showPrecip = Number.isFinite(precipValueRaw) && precipValueRaw > 0;
+                        const footerPrecipValue = precipType === 'snow'
+                          ? formatSnow(visibleOverview?.snowTotal, units)
+                          : `${formatPrecipValue(visibleOverview?.precipTotal, units)} ${units === 'metric' ? 'cm' : 'in'}`;
+                        const precipIcon = getPrecipIcon(precipType);
+                        const cloudIcon = getCloudIcon(visibleOverview?.avgCloudCover);
+                        const tileIcon = precipIcon || cloudIcon;
+                        const isSunny = hasAccess && hasOverview && tileIcon === clearIcon;
+                        const isBluebirdDay = hasAccess && hasOverview && isSunny && prevSnowAmount >= 1;
+
+                        return (
+                          <div
+                            key={key}
+                          className={`day-tile ${hasAccess ? 'active' : 'inactive'} ${isPast ? 'past-day' : ''} ${isToday ? 'today' : ''} ${isSnowDay ? 'snow-day' : ''} ${isPowDay ? 'pow-day' : ''} ${isBluebirdDay ? 'bluebird-day' : ''}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => handleDaySelect(date, hasAccess)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                handleDaySelect(date, hasAccess);
+                              }
+                            }}
+                          >
+                            {isPowDay ? <div className="pow-badge desktop-only">POW</div> : null}
+                            <div className="day-header">
+                              <span className="day-date">{date.getDate()}</span>
+                              {isWindy ? <span className="windy-pill">Windy</span> : null}
+                            </div>
+                            <div className="day-body">
+                              {hasAccess ? (
+                                <>
+                                  <div className="day-icon-cell">
+                                    {tileIcon ? (
+                                      <img src={tileIcon} alt={precipType || 'cloud cover'} />
+                                    ) : (
+                                      <div className="icon-placeholder" />
+                                    )}
+                                  </div>
+                                  <div className="day-temp-cell">
+                                    <span className="day-metric-line temp-line">
+                                      <span className="temp-high temp-value-desktop">{formatTemp(visibleOverview?.maxTemp, units)}</span>
+                                      <span className="temp-high temp-value-mobile">{formatTempValue(visibleOverview?.maxTemp, units)}</span>
+                                      <span className="temp-low temp-value-desktop">{formatTemp(visibleOverview?.minTemp, units)}</span>
+                                      <span className="temp-low temp-value-mobile">{formatTempValue(visibleOverview?.minTemp, units)}</span>
+                                    </span>
+                                  </div>
+                                  {showPrecip ? (
+                                    <div className="day-precip-row">
+                                      <span className="day-metric-line">{hasAccess ? footerPrecipValue : ''}</span>
+                                      <span className="day-metric-line metric-note">{precipType}</span>
+                                    </div>
+                                  ) : null}
+                                  <div className="day-wind-cell">
+                                    <span className="day-metric-line metric-secondary">
+                                      {hasAccess ? formatWind(visibleOverview?.maxWindspeed, units) : ''}
+                                    </span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="day-locked">{lockedLabel}</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))}
-                <button
-                  type="button"
-                  className="weekday-nav"
-                  onClick={() => handleMonthShift(1)}
-                  aria-label="Next month"
-                >
-                  ›
-                </button>
               </div>
-              {calendar.weeks.map((week, index) => (
-                <div className="week-block" key={`week-${index}`}>
-                  <div className="week-row">
-                    {week.map((date) => {
-                      const key = toISODate(date);
-                      const overview = overviewByDate[key];
-                      const hasAccess = isDayVisible(date);
-                      const isPast = differenceInDays(date, today) < 0;
-                      const hasOverview = Boolean(overview);
-                      const isToday = differenceInDays(date, today) === 0;
-                      const visibleOverview = hasAccess ? overview : null;
-                      const lockedLabel = '🔒';
-                      const snowAmount = Number(visibleOverview?.snowTotal ?? 0);
-                      const isPowDay = hasAccess && hasOverview && snowAmount >= 6;
-                      const isSnowDay = hasAccess && hasOverview && snowAmount >= 3;
-                      const windyValueMph = Number(visibleOverview?.maxWindspeed ?? 0);
-                      const isWindy = hasAccess && hasOverview && Number.isFinite(windyValueMph) && windyValueMph >= WINDY_THRESHOLD_MPH;
-                      const precipTotal = Number(visibleOverview?.precipTotal ?? 0);
-                      const precipType = hasAccess && hasOverview && precipTotal > 0
-                        ? (snowAmount > 0
-                          ? (snowAmount < precipTotal ? 'mixed' : 'snow')
-                          : 'rain')
-                        : '';
-                      const precipValueRaw = precipType === 'snow' ? visibleOverview?.snowTotal : visibleOverview?.precipTotal;
-                      const showPrecip = Number.isFinite(precipValueRaw) && precipValueRaw > 0;
-                      const footerPrecipValue = precipType === 'snow'
-                        ? formatSnow(visibleOverview?.snowTotal, units)
-                        : `${formatPrecipValue(visibleOverview?.precipTotal, units)} ${units === 'metric' ? 'cm' : 'in'}`;
-                      const precipIcon = getPrecipIcon(precipType);
-                      const cloudIcon = getCloudIcon(visibleOverview?.avgCloudCover);
-                      const tileIcon = precipIcon || cloudIcon;
-
-                      return (
-                        <div
-                          key={key}
-                          className={`day-tile ${hasAccess ? 'active' : 'inactive'} ${isPast ? 'past-day' : ''} ${isToday ? 'today' : ''} ${isSnowDay ? 'snow-day' : ''} ${isPowDay ? 'pow-day' : ''}`}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => handleDaySelect(date, hasAccess)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              handleDaySelect(date, hasAccess);
-                            }
-                          }}
-                        >
-                          {isPowDay ? <div className="pow-badge desktop-only">POW</div> : null}
-                          <div className="day-header">
-                            <span className="day-date">{date.getDate()}</span>
-                            {isWindy ? <span className="windy-pill">Windy</span> : null}
-                          </div>
-                          <div className="day-body">
-                            {hasAccess ? (
-                              <>
-                                <div className="day-icon-cell">
-                                  {tileIcon ? (
-                                    <img src={tileIcon} alt={precipType || 'cloud cover'} />
-                                  ) : (
-                                    <div className="icon-placeholder" />
-                                  )}
-                                </div>
-                                <div className="day-temp-cell">
-                                  <span className="day-metric-line temp-line">
-                                    <span className="temp-high temp-value-desktop">{formatTemp(visibleOverview?.maxTemp, units)}</span>
-                                    <span className="temp-high temp-value-mobile">{formatTempValue(visibleOverview?.maxTemp, units)}</span>
-                                    <span className="temp-low temp-value-desktop">{formatTemp(visibleOverview?.minTemp, units)}</span>
-                                    <span className="temp-low temp-value-mobile">{formatTempValue(visibleOverview?.minTemp, units)}</span>
-                                  </span>
-                                </div>
-                                {showPrecip ? (
-                                  <div className="day-precip-row">
-                                    <span className="day-metric-line">{hasAccess ? footerPrecipValue : ''}</span>
-                                    <span className="day-metric-line metric-note">{precipType}</span>
-                                  </div>
-                                ) : null}
-                                <div className="day-wind-cell">
-                                  <span className="day-metric-line metric-secondary">
-                                    {hasAccess ? formatWind(visibleOverview?.maxWindspeed, units) : ''}
-                                  </span>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="day-locked">{lockedLabel}</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+            </>
           ) : null}
           {activeView === 'account' ? (
             <div className="profile-page">
@@ -2547,7 +2603,11 @@ function App() {
             </div>
           ) : null}
 
-          {loadingForecast ? <div className="loading">Loading forecast…</div> : null}
+          {loadingForecast ? (
+            <div className="loading">Updating forecast…</div>
+          ) : lastFetchLabel ? (
+            <div className="loading">{lastFetchLabel}</div>
+          ) : null}
         </section>
       </main>
 

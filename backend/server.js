@@ -88,8 +88,13 @@ app.post('/user/discount-codes/redeem', (req, res, next) => discountCodes.redeem
 app.post('/feedback', (req, res, next) => feedback.handleSubmitFeedback(req, res, next));
 app.get('/forecast-models', (req, res) => {
   const models = forecastModels.listModels()
-    .filter((model) => model.enabled)
-    .map((model) => ({ code: model.code, label: model.label }));
+    .map((model) => ({
+      apiModelName: model.apiModelName,
+      displayName: model.displayName,
+      description: model.description,
+      maxForecastDays: model.maxForecastDays,
+      refreshHours: model.refreshHours,
+    }));
   return res.status(200).send(models);
 });
 
@@ -236,7 +241,6 @@ async function start() {
   await appConfig.ensureWeatherConfigDefaults();
   await roleConfig.ensureRoleDefaults();
   await roleConfig.refreshRoleCache();
-  await forecastModels.ensureForecastModelDefaults();
   await forecastModels.refreshModelCache();
   await locations.startLocationMaintenance();
   apiQueue.start();
