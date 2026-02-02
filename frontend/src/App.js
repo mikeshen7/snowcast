@@ -1695,13 +1695,17 @@ function App() {
                         <span className="modal-model-label">Model</span>
                         <span className="model-info" tabIndex={0} aria-label="Model descriptions">
                           ⓘ
-                          <span className="model-tooltip" role="tooltip">
-                            {forecastModelOptions.map((option) => (
-                              <span key={`model-tip-detail-${option.value}`} className="model-tooltip-item">
-                                <strong>{option.label}:</strong> {getModelDescription(option.value, forecastModelCatalogMap)}
-                              </span>
-                            ))}
+                        <span className="model-tooltip" role="tooltip">
+                          <span className="model-tooltip-intro">
+                            <strong className="model-tooltip-name">Snowcast</strong> blends short-range high-resolution models for accuracy with long-range models for maximum horizon.
                           </span>
+                          {forecastModelOptions.map((option) => (
+                            <span key={`model-tip-detail-${option.value}`} className="model-tooltip-item">
+                              <strong className="model-tooltip-name">{option.label}:</strong>{' '}
+                              {getModelDescription(option.value, forecastModelCatalogMap)}
+                            </span>
+                          ))}
+                        </span>
                         </span>
                       </div>
                       <select
@@ -2145,13 +2149,17 @@ function App() {
                         <span className="calendar-model-label">Model</span>
                         <span className="model-info" tabIndex={0} aria-label="Model descriptions">
                           ⓘ
-                          <span className="model-tooltip" role="tooltip">
-                            {forecastModelOptions.map((option) => (
-                              <span key={`model-tip-${option.value}`} className="model-tooltip-item">
-                                <strong>{option.label}:</strong> {getModelDescription(option.value, forecastModelCatalogMap)}
-                              </span>
-                            ))}
+                        <span className="model-tooltip" role="tooltip">
+                          <span className="model-tooltip-intro">
+                            <strong className="model-tooltip-name">Snowcast</strong> blends short-range high-resolution models for accuracy with long-range models for maximum horizon.
                           </span>
+                          {forecastModelOptions.map((option) => (
+                            <span key={`model-tip-${option.value}`} className="model-tooltip-item">
+                              <strong className="model-tooltip-name">{option.label}:</strong>{' '}
+                              {getModelDescription(option.value, forecastModelCatalogMap)}
+                            </span>
+                          ))}
+                        </span>
                         </span>
                       </div>
                       <select

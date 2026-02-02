@@ -578,7 +578,7 @@ select option {
 
 .calendar-controls {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   column-gap: 28px;
   row-gap: 10px;
   flex-wrap: wrap;
@@ -588,6 +588,7 @@ select option {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -642,6 +643,21 @@ select option {
   z-index: 10;
 }
 
+.model-tooltip * {
+  font: inherit;
+  color: inherit;
+}
+
+.model-tooltip strong {
+  font-weight: 700;
+}
+
+.model-tooltip-name {
+  color: #7fb2f0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .model-info:hover .model-tooltip,
 .model-info:focus .model-tooltip {
   opacity: 1;
@@ -650,6 +666,11 @@ select option {
 .model-tooltip-item {
   display: block;
   margin-bottom: 6px;
+}
+
+.model-tooltip-intro {
+  display: block;
+  margin-bottom: 8px;
 }
 
 .model-tooltip-item:last-child {
@@ -663,6 +684,7 @@ select option {
   font-size: 12px;
   color: var(--ink-700);
   background: var(--snow-50);
+  min-width: 88px;
 }
 
 .calendar-weekdays {
