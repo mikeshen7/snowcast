@@ -127,6 +127,13 @@ export function submitFeedback({ message, context } = {}) {
   });
 }
 
+export function sendCalendarShareEmail({ to, locationId, model, elevation, month, shareUrl }) {
+  return apiFetch('/user/share-calendar', {
+    method: 'POST',
+    body: { to, locationId, model, elevation, month, shareUrl },
+  });
+}
+
 
 export function getLocations({ query = '', isSkiResort = true, limit = 50 } = {}) {
   return apiFetch('/locations', {

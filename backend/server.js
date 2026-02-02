@@ -22,6 +22,7 @@ const powAlerts = require('./modules/powAlerts');
 const discountCodes = require('./modules/discountCodes');
 const engagement = require('./modules/engagement');
 const feedback = require('./modules/feedback');
+const shareCalendar = require('./modules/shareCalendar');
 const {
   requireAdminSession,
   handleRequestMagicLink,
@@ -86,6 +87,7 @@ app.delete('/user/alerts/:id', (req, res, next) => powAlerts.handleDeleteAlert(r
 app.post('/user/alerts/check', (req, res, next) => powAlerts.handleCheckAlerts(req, res, next));
 app.post('/user/discount-codes/redeem', (req, res, next) => discountCodes.redeemCode(req, res, next));
 app.post('/feedback', (req, res, next) => feedback.handleSubmitFeedback(req, res, next));
+app.post('/user/share-calendar', (req, res, next) => shareCalendar.handleShareCalendar(req, res, next));
 app.get('/forecast-models', (req, res) => {
   const models = forecastModels.listModels()
     .map((model) => ({

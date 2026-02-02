@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css';
 import Icon from './Icon';
 import snowcastLogo from './assets/snowcast.png';
+import shareIcon from './assets/share.png';
 import rainIcon from './weatherIcons/rain.png';
 import snowIcon from './weatherIcons/snow.png';
 import mixedIcon from './weatherIcons/rainsnow.png';
@@ -26,6 +27,7 @@ import {
   trackEngagementEvent,
   submitFeedback,
   getForecastModels,
+  sendCalendarShareEmail,
 } from './api';
 import {
   buildCalendarRange,
@@ -102,6 +104,31 @@ function normalizeForecastModel(value, options = DEFAULT_FORECAST_MODEL_OPTIONS)
   if (next === 'blend') return DEFAULT_FORECAST_MODEL;
   const allowed = new Set(options.map((option) => option.value));
   return allowed.has(next) ? next : DEFAULT_FORECAST_MODEL;
+}
+
+function parseShareParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    locationId: params.get('loc') || '',
+    model: params.get('model') || '',
+    elevation: params.get('elev') || '',
+    month: params.get('month') || '',
+  };
+}
+
+function formatMonthParam(date) {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function parseMonthParam(value) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(raw)) return null;
+  const [year, month] = raw.split('-').map((part) => Number(part));
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return new Date(year, month - 1, 1);
 }
 
 function getModelDescription(value, catalogMap) {
@@ -402,6 +429,8 @@ function App() {
   const engagementLocationRef = useRef(null);
   const activeModelRef = useRef(activeModel);
   const forecastModelRef = useRef(forecastModel);
+  const initialShareParams = useMemo(() => parseShareParams(), []);
+  const shareAppliedRef = useRef(false);
   const forecastModelCatalogMap = useMemo(() => {
     const entries = (forecastModelCatalog || []).map((model) => [
       String(model?.apiModelName || '').toLowerCase(),
@@ -512,6 +541,42 @@ function App() {
       setForecastModel(normalizedPreferred);
     }
   }, [selectedLocation, forecastModelCatalogMap]);
+
+  useEffect(() => {
+    if (shareAppliedRef.current) return;
+    if (!locations.length) return;
+    const pending = initialShareParams;
+    if (pending.locationId) {
+      const exists = locations.some((loc) => String(loc.id) === String(pending.locationId));
+      if (exists) {
+        setSelectedLocationId(String(pending.locationId));
+      }
+    }
+    if (pending.month) {
+      const parsed = parseMonthParam(pending.month);
+      if (parsed) {
+        setDisplayMonth(parsed);
+      }
+    }
+    if (pending.elevation) {
+      setActiveElevation(normalizeForecastElevation(pending.elevation));
+    }
+    if (pending.model) {
+      setActiveModel(normalizeForecastModel(pending.model, forecastModelOptions));
+    }
+    shareAppliedRef.current = true;
+  }, [locations, forecastModelOptions, initialShareParams]);
+
+  useEffect(() => {
+    if (!selectedLocationId) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('loc', String(selectedLocationId));
+    params.set('model', normalizeForecastModel(activeModel, forecastModelOptions));
+    params.set('elev', normalizeForecastElevation(activeElevation));
+    params.set('month', formatMonthParam(displayMonth));
+    const nextUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, '', nextUrl);
+  }, [selectedLocationId, activeModel, activeElevation, displayMonth, forecastModelOptions]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1116,7 +1181,7 @@ function App() {
     sendEngagement('favorite_added', {}, selectedLocationId);
   };
 
-  const showToast = (message, kind = 'info', duration = 6000, action = null) => {
+  const showToast = useCallback((message, kind = 'info', duration = 6000, action = null) => {
     setToastMessage(message);
     setToastKind(kind);
     setToastAction(action);
@@ -1126,7 +1191,72 @@ function App() {
         setToastAction(null);
       }, duration);
     }
-  };
+  }, []);
+
+  const buildShareUrl = useCallback(() => {
+    if (!selectedLocationId) return '';
+    const params = new URLSearchParams();
+    params.set('loc', String(selectedLocationId));
+    params.set('model', normalizeForecastModel(activeModel, forecastModelOptions));
+    params.set('elev', normalizeForecastElevation(activeElevation));
+    params.set('month', formatMonthParam(displayMonth));
+    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+  }, [selectedLocationId, activeModel, activeElevation, displayMonth, forecastModelOptions]);
+
+  const handleShareCalendar = useCallback(async () => {
+    if (!selectedLocationId) return;
+    const shareUrl = buildShareUrl();
+    const monthLabel = displayMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const modelLabel = forecastModelOptions.find((option) => option.value === activeModel)?.label || 'Median';
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Snowcast - ${selectedLocationName}`,
+          text: `${selectedLocationName} (${modelLabel}, ${monthLabel})`,
+          url: shareUrl,
+        });
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    const email = window.prompt('Send this calendar to email:', '');
+    if (!email) return;
+    if (!isSignedIn) {
+      showToast('Sign in to email a share link.', 'warning', 6000, {
+        label: 'Sign in',
+        onClick: () => {
+          setShowLogin(true);
+          setToastMessage('');
+          setToastAction(null);
+        },
+      });
+      return;
+    }
+    try {
+      await sendCalendarShareEmail({
+        to: email,
+        locationId: selectedLocationId,
+        model: normalizeForecastModel(activeModel, forecastModelOptions),
+        elevation: normalizeForecastElevation(activeElevation),
+        month: formatMonthParam(displayMonth),
+        shareUrl,
+      });
+      showToast('Share email sent.', 'success');
+    } catch (error) {
+      showToast(error?.message || 'Unable to send share email.', 'error');
+    }
+  }, [
+    selectedLocationId,
+    buildShareUrl,
+    displayMonth,
+    forecastModelOptions,
+    activeModel,
+    selectedLocationName,
+    isSignedIn,
+    activeElevation,
+    showToast,
+  ]);
 
   const handleFavoriteAttempt = () => {
     if (!isSignedIn) {
@@ -2140,9 +2270,21 @@ function App() {
               ) : null}
               <div className="calendar">
                 <div className="calendar-month">
-                  <span className="current-month">
-                    {displayMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-                  </span>
+                  <div className="calendar-title-row">
+                    <span className="current-month">
+                      {displayMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button
+                      type="button"
+                      className="calendar-share"
+                      onClick={handleShareCalendar}
+                      disabled={!selectedLocationId}
+                      aria-label="Share calendar"
+                      title="Share"
+                    >
+                      <img className="calendar-share-icon" src={shareIcon} alt="" aria-hidden="true" />
+                    </button>
+                  </div>
                   <div className="calendar-controls">
                     <div className="calendar-control">
                       <div className="calendar-label-row">
