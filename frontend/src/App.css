@@ -1887,6 +1887,18 @@ select option {
   box-shadow: 0 14px 26px -20px rgba(214, 154, 26, 0.45);
 }
 
+.day-tile.rain-day {
+  background: linear-gradient(180deg, rgba(118, 214, 174, 0.28), rgba(225, 247, 237, 0.95));
+  border-color: rgba(65, 160, 120, 0.4);
+  box-shadow: 0 14px 26px -20px rgba(65, 160, 120, 0.4);
+}
+
+.day-tile.rain-day-strong {
+  background: linear-gradient(180deg, rgba(88, 198, 150, 0.4), rgba(210, 242, 228, 0.95));
+  border-color: rgba(45, 140, 100, 0.5);
+  box-shadow: 0 14px 26px -20px rgba(45, 140, 100, 0.5);
+}
+
 .pow-badge {
   position: absolute;
   top: 6px;

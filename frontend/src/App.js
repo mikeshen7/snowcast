@@ -2249,6 +2249,8 @@ function App() {
                           : '';
                         const precipValueRaw = precipType === 'snow' ? visibleOverview?.snowTotal : visibleOverview?.precipTotal;
                         const showPrecip = Number.isFinite(precipValueRaw) && precipValueRaw > 0;
+                        const isRainyDay = hasAccess && hasOverview && (precipType === 'rain' || precipType === 'mixed') && precipTotal > 0.1;
+                        const isRainyDayStrong = hasAccess && hasOverview && (precipType === 'rain' || precipType === 'mixed') && precipTotal > 0.5;
                         const footerPrecipValue = precipType === 'snow'
                           ? formatSnow(visibleOverview?.snowTotal, units)
                           : `${formatPrecipValue(visibleOverview?.precipTotal, units)} ${units === 'metric' ? 'cm' : 'in'}`;
@@ -2261,7 +2263,7 @@ function App() {
                         return (
                           <div
                             key={key}
-                          className={`day-tile ${hasAccess ? 'active' : 'inactive'} ${isPast ? 'past-day' : ''} ${isToday ? 'today' : ''} ${isSnowDay ? 'snow-day' : ''} ${isPowDay ? 'pow-day' : ''} ${isBluebirdDay ? 'bluebird-day' : ''}`}
+                          className={`day-tile ${hasAccess ? 'active' : 'inactive'} ${isPast ? 'past-day' : ''} ${isToday ? 'today' : ''} ${isSnowDay ? 'snow-day' : ''} ${isPowDay ? 'pow-day' : ''} ${isBluebirdDay ? 'bluebird-day' : ''} ${isRainyDay ? 'rain-day' : ''} ${isRainyDayStrong ? 'rain-day-strong' : ''}`}
                             role="button"
                             tabIndex={0}
                             onClick={() => handleDaySelect(date, hasAccess)}
