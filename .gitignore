@@ -5,6 +5,7 @@ frontend/build/
 backend/.env
 frontend/.env
 .env
+.mongo-migrate.env
 dist/
 build/
 *.log

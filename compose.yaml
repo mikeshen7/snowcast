@@ -1,0 +1,63 @@
+services:
+  frontend:
+    build:
+      context: .
+      target: frontend
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-}
+        REACT_APP_GA_ID: ${REACT_APP_GA_ID:-}
+    image: snowcast-frontend:local
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8021}:8080"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      target: backend
+    image: snowcast-backend:local
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DB_NAME: ${DB_NAME:-weather}
+      DB_URL: ${DB_URL:-mongodb://mongo:27017/}
+      BACKEND_DEV: ${BACKEND_DEV:-false}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:3001}
+      BACKEND_PORT: 3001
+      BACKEND_ADMIN_ENABLED: ${BACKEND_ADMIN_ENABLED:-false}
+      BACKEND_COOKIE_SECURE: ${BACKEND_COOKIE_SECURE:-false}
+      BACKEND_ADMIN_EMAIL: ${BACKEND_ADMIN_EMAIL:-}
+      BACKEND_SESSION_SECRET: ${BACKEND_SESSION_SECRET:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+      FRONTEND_SESSION_SECRET: ${FRONTEND_SESSION_SECRET:-replace-me-for-real-deployments}
+      FRONTEND_COOKIE_SECURE: ${FRONTEND_COOKIE_SECURE:-false}
+      FRONTEND_COOKIE_SAMESITE: ${FRONTEND_COOKIE_SAMESITE:-lax}
+      AUTH_ALLOW_NEW_USERS: ${AUTH_ALLOW_NEW_USERS:-false}
+      CORS_FRONTEND_ORIGINS: ${CORS_FRONTEND_ORIGINS:-http://localhost:3001}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_API_ENDPOINT_URL: ${BREVO_API_ENDPOINT_URL:-https://api.brevo.com/v3/smtp/email}
+      SMTP_FROM: ${SMTP_FROM:-}
+      CLIENT_API_SESSION_SECRET: ${CLIENT_API_SESSION_SECRET:-}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3021}:3001"
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo-data:

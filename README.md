@@ -39,10 +39,63 @@ Health checks:
 - `GET /health` for backend liveness
 - `GET /health/frontend` for frontend build availability
 
+## Docker deployment
+
+Create a root `.env` from the example, then build both Docker images:
+
+```bash
+cp .env.docker.example .env
+docker compose build
+```
+
+Start the local stack:
+
+```bash
+docker compose up -d
+```
+
+Or build and start in one command:
+
+```bash
+docker compose up --build -d
+```
+
+Useful local commands:
+
+```bash
+docker compose logs -f
+docker compose ps
+docker compose down
+docker compose build frontend
+docker compose build backend
+```
+
+The frontend is served locally at `http://localhost:8021`, and the backend is available locally at `http://localhost:3021`. Compose binds both ports to `127.0.0.1`; point Cloudflared at `http://localhost:8021` only. The frontend container proxies app API paths such as `/auth`, `/weather`, `/locations`, and `/admin.html` to the backend service over Docker networking, so `REACT_APP_BACKEND_URL` should usually stay empty for same-origin deployment.
+
+To migrate data from a cloud MongoDB database into the local Compose MongoDB service:
+
+```bash
+CLOUD_DB_URL='mongodb+srv://user:password@example.mongodb.net/' ./scripts/migrate-cloud-mongo-to-local.sh
+```
+
+The script migrates the database named by `DB_NAME` in `.env` and restores it into the local `mongo` service. It uses `--drop`, so existing local collections with the same names are replaced.
+
+For the `snowcast.mikeshen.dev` tunnel, use this shape in `.env`:
+
+```env
+BACKEND_URL=https://snowcast.mikeshen.dev
+BACKEND_PORT=3021
+FRONTEND_URL=https://snowcast.mikeshen.dev
+FRONTEND_PORT=8021
+CORS_FRONTEND_ORIGINS=http://localhost:8021,https://snowcast.mikeshen.dev
+```
+
+Set `BACKEND_ADMIN_ENABLED=true`, `BACKEND_SESSION_SECRET`, `BACKEND_ADMIN_EMAIL`, and the Brevo email variables only when enabling the admin UI.
+
 ## Environment notes
 
-- `backend/.env` and `frontend/.env` should exist (see `.sample.env` files).
-- `BACKEND_URL` should point to the backend origin (same as the frontend when deployed).
+- Docker Compose reads `.env` from the repo root.
+- `BACKEND_URL` should point to the public frontend origin when the frontend proxy is the only public entrypoint.
 - `FRONTEND_URL` should point to the frontend origin for redirects.
 - Admin access is controlled by the `isAdmin` flag on the user document; subscription role (free/premium) is derived from `subscriptionExpiresAt`.
 

@@ -92,10 +92,16 @@ async function seed() {
     await mongoose.connect(`${config.db.url}${databaseName}?retryWrites=true&w=majority`);
     console.log('Connected');
 
+    const existingCount = await ForecastModel.countDocuments();
+    if (existingCount > 0) {
+      console.log(`Forecast models already seeded (${existingCount} found). Skipping.`);
+      return;
+    }
+
     const ops = seedForecastModels.map((model) => ({
       updateOne: {
         filter: { apiModelName: model.apiModelName },
-        update: { $setOnInsert: model },
+        update: { $set: model },
         upsert: true,
       },
     }));
