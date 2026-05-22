@@ -11,7 +11,7 @@ services:
       backend:
         condition: service_started
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-8021}:8080"
+      - "${FRONTEND_PORT:-8021}:8080"
     restart: unless-stopped
 
   backend:
@@ -44,7 +44,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       CLIENT_API_SESSION_SECRET: ${CLIENT_API_SESSION_SECRET:-}
     ports:
-      - "127.0.0.1:${BACKEND_PORT:-3021}:3001"
+      - "${BACKEND_PORT:-3021}:3001"
     restart: unless-stopped
 
   mongo:
