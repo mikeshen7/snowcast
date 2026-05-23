@@ -57,6 +57,20 @@
   cursor: pointer;
 }
 
+.brand-menu-button {
+  border: 1px solid rgba(248, 251, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .brand-mark {
   font-size: 20px;
   letter-spacing: 0.12em;
@@ -195,6 +209,20 @@
   background: var(--accent-500);
   color: var(--ink-900);
   border-color: transparent;
+}
+
+.resort-share {
+  border-color: rgba(248, 251, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--snow-50);
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.resort-share .calendar-share-icon {
+  filter: brightness(0) invert(1);
+  opacity: 0.86;
 }
 
 .control-compact {
@@ -566,7 +594,7 @@ select option {
 .calendar {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .calendar-month {
@@ -724,8 +752,8 @@ select option {
 
 .calendar-weekdays {
   display: grid;
-  grid-template-columns: 26px repeat(7, minmax(0, 1fr)) 26px;
-  gap: 10px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 11px;
@@ -751,6 +779,10 @@ select option {
   justify-content: center;
 }
 
+.month-nav {
+  flex: 0 0 auto;
+}
+
 .tabs {
   display: inline-flex;
   gap: 12px;
@@ -767,36 +799,14 @@ select option {
   gap: 12px;
 }
 
-.hamburger-button {
-  border: none;
-  background: var(--storm-600);
-  border-radius: 10px;
-  width: 40px;
-  height: 36px;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  cursor: pointer;
-}
-
-.hamburger-bar {
-  display: block;
-  width: 18px;
-  height: 2px;
-  background: var(--snow-50);
-  border-radius: 999px;
-}
-
 .mobile-menu-overlay {
   position: fixed;
   inset: 0;
   background: transparent;
   display: flex;
   align-items: flex-start;
-  justify-content: flex-end;
-  padding: 12px 5vw;
+  justify-content: flex-start;
+  padding: 64px 5vw 12px;
   z-index: 30;
 }
 
@@ -1878,27 +1888,27 @@ select option {
 .week-block {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .week-row {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   text-align: left;
   animation: float-in 0.6s ease both;
 }
 
 .day-tile {
-  border-radius: 12px;
-  padding: 6px;
+  border-radius: 10px;
+  padding: 5px;
   background: var(--snow-50);
   border: 1px solid rgba(13, 27, 42, 0.08);
   box-shadow: 0 12px 24px -22px var(--shadow-strong);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: 112px;
+  gap: 6px;
+  min-height: 94px;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   text-align: left;
   position: relative;
@@ -1936,16 +1946,16 @@ select option {
 
 .pow-badge {
   position: absolute;
-  top: 6px;
+  top: 5px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #ffffff;
   background: linear-gradient(120deg, #7fb2f0, #2f5fa8);
-  padding: 2px 8px;
+  padding: 1px 7px;
   border-radius: 999px;
   box-shadow: 0 8px 16px -12px rgba(7, 15, 26, 0.6);
   z-index: 2;
@@ -1998,7 +2008,7 @@ select option {
 .day-header {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-500);
@@ -2011,8 +2021,8 @@ select option {
   color: var(--accent-600);
   border: 1px solid rgba(225, 140, 27, 0.35);
   border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 10px;
+  padding: 1px 6px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
 }
@@ -2020,7 +2030,7 @@ select option {
 .day-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
   justify-content: center;
   position: relative;
@@ -2060,7 +2070,7 @@ select option {
 .day-date {
   display: inline;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .day-locked {
@@ -2074,23 +2084,23 @@ select option {
 }
 
 .day-body img {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
 }
 
 .icon-placeholder {
-  width: 30px;
-  height: 30px;
-  border-radius: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 12px;
   background: var(--frost-200);
 }
 
 .day-metric-line {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-700);
 }
@@ -2118,7 +2128,7 @@ select option {
 
 .metric-secondary {
   display: inline-flex;
-  gap: 6px;
+  gap: 4px;
   white-space: nowrap;
 }
 
@@ -2176,6 +2186,58 @@ select option {
   }
 }
 
+@media (max-height: 850px) and (min-width: 581px) {
+  .app-main {
+    padding-top: 18px;
+    padding-bottom: 32px;
+  }
+
+  .overview,
+  .calendar {
+    gap: 10px;
+  }
+
+  .calendar-month {
+    gap: 8px;
+  }
+
+  .week-block,
+  .week-row {
+    gap: 6px;
+  }
+
+  .calendar-weekdays {
+    gap: 6px;
+    font-size: 10px;
+  }
+
+  .weekday-nav {
+    width: 24px;
+    height: 24px;
+  }
+
+  .day-tile {
+    min-height: 86px;
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .day-body img,
+  .icon-placeholder {
+    width: 24px;
+    height: 24px;
+  }
+
+  .day-metric-line {
+    font-size: 10px;
+    line-height: 1.05;
+  }
+
+  .day-wind-cell {
+    display: none;
+  }
+}
+
 @media (max-width: 580px) {
   .desktop-only {
     display: none;
@@ -2217,6 +2279,12 @@ select option {
   }
 
   .resort-favorite {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .resort-share {
     width: 30px;
     height: 30px;
     border-radius: 8px;

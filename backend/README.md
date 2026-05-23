@@ -72,7 +72,7 @@ npm install
  
 
 - Weather (from Open-Meteo, stored hourly):
-  - `GET /weather/hourly?locationId=<mongoId>&daysBack=3&daysForward=14&sort=asc` (requires `locationId`, optional `daysBack`, `daysForward`, `sort`; defaults to 3 days back / 14 days forward)
+  - `GET /weather/hourly?locationId=<mongoId>&daysBack=3&daysForward=14&sort=asc&model=median&elevation=mid` (requires `locationId`; optional `daysBack`, `daysForward`, `sort`, `model`, `elevation`; defaults to 3 days back / 14 days forward, median model, mid elevation)
   - `GET /weather/hourly/by-coords?lat=39.6&lon=-106.4&daysBack=3` resolves the nearest stored location in one call (optional `maxDistanceKm`, `daysForward`)
   - `GET /weather/daily/overview?locationId=<mongoId>&daysForward=10` aggregates hourly data (in the location’s timezone) into per-day entries exposing: min/max temps, precip/snow totals, avg windspeed/precip prob/cloud cover/visibility, and a representative hour near local noon (defaults 3 days back / 14 days forward)
   - `GET /weather/daily/overview/by-coords?lat=39.6&lon=-106.4&daysForward=10` provides the same aggregation but resolves the nearest stored location by coordinates (optional `maxDistanceKm`)
@@ -91,13 +91,16 @@ npm install
 ## Maintenance & Schedules
 
 - Locations: cache refresh runs on startup and every 2 hours.
-- Weather: Open-Meteo fetch runs on startup (or delayed) and every 2 hours; calls are queued and throttled. Old hourly data (>60 days) and orphaned hourly records (for deleted locations) are cleaned.
-- Backfill: Historical backfill runs on startup and once per day (configurable) and is also queued/throttled.
+- Weather: Open-Meteo fetch runs on startup (or delayed) and every 2 hours; calls are queued and throttled. After source models are fetched, median rows are materialized into hourly weather storage. Old hourly data (>60 days) and orphaned hourly records (for deleted locations) are cleaned.
+- Backfill: Historical backfill runs on startup and once per day (configurable) and is also queued/throttled. Backfills also regenerate materialized median rows for the selected locations/elevations.
 
 ## Data & Timezones
 
 - Store/process in UTC. Include location timezone (tz_iana) and convert for display on the frontend.
-- Hourly weather is the source of truth.
+- Hourly weather is stored in Mongo in `hourlyWeatherDb`.
+- Source forecast models are stored as hourly rows with their Open-Meteo model name.
+- The default user-facing `median` model is also stored as hourly rows (`model: "median"`) after fetch/backfill jobs. Median rows are derived from the location’s configured source models for the same location, elevation, and hour.
+- Read paths prefer stored median rows. If old data has not been materialized yet, the API falls back to computing median rows from source model data at request time.
 
 ## Seeding
 

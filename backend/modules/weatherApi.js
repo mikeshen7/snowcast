@@ -8,6 +8,12 @@ const forecastModels = require('./forecastModels');
 const apiQueue = require('./apiQueue');
 const { logAdminEvent } = require('./adminLogs');
 const {
+  MEDIAN_MODEL,
+  DEFAULT_ELEVATION,
+  addElevationFilter,
+  medianHourlyDocs,
+} = require('./weatherShared');
+const {
   localDateTimeStringToUtcEpoch,
   getLocalPartsFromUtc,
 } = require('./timezone');
@@ -74,6 +80,15 @@ const cmToIn = (cm) => (cm == null ? null : cm / 2.54);
 function normalizeElevationKey(value) {
   const key = String(value || '').toLowerCase().trim();
   return ELEVATION_KEYS.includes(key) ? key : '';
+}
+
+// Normalize Model List.
+function normalizeModelList(models) {
+  if (!Array.isArray(models)) return [];
+  const seen = new Set();
+  return models
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter((value) => value && !seen.has(value) && (seen.add(value), true));
 }
 
 // Resolve Elevation Ft.
@@ -256,9 +271,95 @@ async function fetchLocationModels(location, options = {}) {
         ? location.apiModelNames
         : FORECAST_MODELS;
   if (!models.length) return [];
-  const tasks = models.map((model) => fetchLocation(location, { ...options, model }));
+  const normalizedModels = normalizeModelList(models);
+  const tasks = normalizedModels.map((model) => fetchLocation(location, { ...options, model }));
   const results = await Promise.all(tasks);
+  if (options.persistMedian !== false) {
+    await persistMedianWeatherDocs(location, {
+      elevationKey: options.elevationKey,
+      elevationFt: options.elevationFt,
+      modelNames: normalizedModels,
+    });
+  }
   return results.filter(Boolean);
+}
+
+// buildStoredMedianDoc strips Mongo-only fields from an in-memory median row.
+function buildStoredMedianDoc(doc, location, elevationKey, elevationFt) {
+  const locationId = String(location._id || doc.locationId || '');
+  const epoch = doc.dateTimeEpoch;
+  return {
+    key: `${locationId}-${MEDIAN_MODEL}-${elevationKey}-${epoch}`,
+    resort: doc.resort || location.name,
+    locationId,
+    model: MEDIAN_MODEL,
+    elevationKey,
+    elevationFt: Number.isFinite(elevationFt) ? elevationFt : doc.elevationFt ?? null,
+    dateTimeEpoch: epoch,
+    dayOfWeek: doc.dayOfWeek,
+    date: doc.date,
+    month: doc.month,
+    year: doc.year,
+    dateTime: doc.dateTime,
+    hour: doc.hour,
+    min: doc.min,
+    precipProb: doc.precipProb,
+    precipType: doc.precipType,
+    precip: doc.precip,
+    snow: doc.snow,
+    rain: doc.rain,
+    windspeed: doc.windspeed,
+    cloudCover: doc.cloudCover,
+    visibility: doc.visibility,
+    freezingLevelFt: doc.freezingLevelFt,
+    snowDepthIn: doc.snowDepthIn,
+    conditions: doc.conditions,
+    icon: doc.icon,
+    temp: doc.temp,
+    feelsLike: doc.feelsLike,
+  };
+}
+
+// persistMedianWeatherDocs materializes model medians into hourlyWeatherDb.
+async function persistMedianWeatherDocs(location, options = {}) {
+  const locationId = String(location?._id || '');
+  if (!locationId) return { count: 0 };
+
+  const modelNames = normalizeModelList(
+    options.modelNames || options.models || location.apiModelNames
+  );
+  if (!modelNames.length) return { count: 0 };
+
+  const elevationKey = normalizeElevationKey(options.elevationKey) || DEFAULT_ELEVATION_KEY;
+  const elevationFt = Number.isFinite(options.elevationFt)
+    ? Number(options.elevationFt)
+    : resolveElevationFt(location, elevationKey);
+  const filter = {
+    locationId,
+    model: { $in: modelNames },
+  };
+  addElevationFilter(filter, elevationKey || DEFAULT_ELEVATION);
+
+  const sourceDocs = await hourlyWeatherDb
+    .find(filter)
+    .sort({ dateTimeEpoch: 1 })
+    .lean();
+  const medianDocs = medianHourlyDocs(sourceDocs, modelNames)
+    .map((doc) => buildStoredMedianDoc(doc, location, elevationKey, elevationFt));
+
+  if (!medianDocs.length) {
+    return { count: 0 };
+  }
+
+  const ops = medianDocs.map((doc) => ({
+    updateOne: {
+      filter: { key: doc.key },
+      update: { $set: doc },
+      upsert: true,
+    },
+  }));
+  await hourlyWeatherDb.bulkWrite(ops, { ordered: false });
+  return { count: medianDocs.length };
 }
 
 // upsertWeatherDocs transforms the API payload into Mongo upsert operations.
@@ -355,6 +456,7 @@ async function upsertWeatherDocs(location, name, data, model, elevationKey, elev
 module.exports = {
   fetchLocation,
   fetchLocationModels,
+  persistMedianWeatherDocs,
   listLocationElevations,
   FORECAST_MODELS,
 };

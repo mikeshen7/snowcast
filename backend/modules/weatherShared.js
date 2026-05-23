@@ -17,6 +17,30 @@ const DEFAULT_MODEL = MEDIAN_MODEL;
 const DEFAULT_ELEVATION = 'mid';
 const ELEVATION_KEYS = ['base', 'mid', 'top'];
 
+// addOrFilter appends OR clauses without clobbering an existing elevation OR filter.
+function addOrFilter(filter, clauses) {
+  if (filter.$or) {
+    filter.$and = [{ $or: filter.$or }, { $or: clauses }];
+    delete filter.$or;
+  } else {
+    filter.$or = clauses;
+  }
+}
+
+// addElevationFilter applies the selected elevation, preserving legacy mid-elevation rows.
+function addElevationFilter(filter, resolvedElevation) {
+  if (!resolvedElevation) return;
+  if (resolvedElevation === DEFAULT_ELEVATION) {
+    filter.$or = [
+      { elevationKey: resolvedElevation },
+      { elevationKey: { $exists: false } },
+      { elevationKey: null },
+    ];
+  } else {
+    filter.elevationKey = resolvedElevation;
+  }
+}
+
 // Normalize Forecast Model.
 function normalizeForecastModel(input, allowedModels = []) {
   const value = String(input || '').toLowerCase().trim();
@@ -225,7 +249,7 @@ async function queryHourlyDocs(options) {
 
   const config = appConfig.values();
   const { MS_PER_DAY, WEATHER_API_MAX_DAYS_BACK, WEATHER_API_MAX_DAYS_FORWARD } = config;
-  const filter = { locationId };
+  const baseFilter = { locationId };
   const locationModels = Array.isArray(location?.apiModelNames)
     ? location.apiModelNames.map((value) => String(value || '').toLowerCase().trim()).filter(Boolean)
     : [];
@@ -275,46 +299,52 @@ async function queryHourlyDocs(options) {
 
   const dateFilter = buildDateFilter(effectiveStart, effectiveEnd);
   if (dateFilter) {
-    filter.dateTimeEpoch = dateFilter;
+    baseFilter.dateTimeEpoch = dateFilter;
   }
-  if (resolvedElevation) {
-    if (resolvedElevation === DEFAULT_ELEVATION) {
-      filter.$or = [
-        { elevationKey: resolvedElevation },
-        { elevationKey: { $exists: false } },
-        { elevationKey: null },
-      ];
-    } else {
-      filter.elevationKey = resolvedElevation;
-    }
-  }
+  addElevationFilter(baseFilter, resolvedElevation);
+
+  const sortDirection = sort === 'desc' ? -1 : 1;
+
   if (resolvedModel === MEDIAN_MODEL) {
+    const storedDocs = await hourlyWeatherDb
+      .find({ ...baseFilter, model: MEDIAN_MODEL })
+      .sort({ dateTimeEpoch: sortDirection })
+      .lean();
+
+    if (storedDocs.length) {
+      return { docs: storedDocs, location };
+    }
+
+    const filter = { ...baseFilter };
     const modelFilter = [
       { model: { $in: [...locationModels, AUTO_MODEL] } },
       { model: { $exists: false } },
       { model: null },
     ];
-    if (filter.$or) {
-      filter.$and = [{ $or: filter.$or }, { $or: modelFilter }];
-      delete filter.$or;
-    } else {
-      filter.$or = modelFilter;
+    addOrFilter(filter, modelFilter);
+
+    const docs = await hourlyWeatherDb
+      .find(filter)
+      .sort({ dateTimeEpoch: sortDirection })
+      .lean();
+
+    let finalDocs = medianHourlyDocs(docs, locationModels);
+    if (sortDirection === -1) {
+      finalDocs = [...finalDocs].sort((a, b) => b.dateTimeEpoch - a.dateTimeEpoch);
     }
-  } else if (resolvedModel) {
-    filter.model = resolvedModel;
+    return { docs: finalDocs, location };
   }
 
-  const sortDirection = sort === 'desc' ? -1 : 1;
+  const filter = { ...baseFilter };
+  if (resolvedModel) {
+    filter.model = resolvedModel;
+  }
   const docs = await hourlyWeatherDb
     .find(filter)
     .sort({ dateTimeEpoch: sortDirection })
     .lean();
 
-  let finalDocs = resolvedModel === MEDIAN_MODEL ? medianHourlyDocs(docs, locationModels) : docs;
-  if (resolvedModel === MEDIAN_MODEL && sortDirection === -1) {
-    finalDocs = [...finalDocs].sort((a, b) => b.dateTimeEpoch - a.dateTimeEpoch);
-  }
-  return { docs: finalDocs, location };
+  return { docs, location };
 }
 
 // buildHourlyWeatherResponse wraps queryHourlyDocs with serialization.
@@ -373,9 +403,16 @@ async function findNearestLocation(lat, lon, maxDistanceMi = appConfig.values().
 }
 
 module.exports = {
+  AUTO_MODEL,
+  MEDIAN_MODEL,
+  DEFAULT_ELEVATION,
   sanitizeDoc,
   buildDateFilter,
   fetchLocationDetail,
+  medianHourlyDocs,
+  normalizeElevationKey,
+  addElevationFilter,
+  addOrFilter,
   queryHourlyDocs,
   buildHourlyWeatherResponse,
   findNearestLocation,

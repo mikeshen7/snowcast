@@ -1124,10 +1124,6 @@ function App() {
     </button>
   ) : null;
 
-  const hamburgerClassName = isAuthenticated
-    ? 'hamburger-button'
-    : 'hamburger-button desktop-only';
-
   const roleLabel = roleLabels[role] || role || '-';
   const expiresLabel = useMemo(() => {
     if (role === 'admin') return 'Never';
@@ -1489,6 +1485,16 @@ function App() {
         >
           {isFavoriteSelected ? '★' : '☆'}
         </button>
+        <button
+          type="button"
+          className="calendar-share resort-share"
+          onClick={handleShareCalendar}
+          disabled={!selectedLocationId}
+          aria-label="Share calendar"
+          title="Share"
+        >
+          <img className="calendar-share-icon" src={shareIcon} alt="" aria-hidden="true" />
+        </button>
       </div>
     </div>
   );
@@ -1646,11 +1652,20 @@ function App() {
           <div className="brand-row">
             <button
               type="button"
-              className="brand-link"
+              className="brand-menu-button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-menu"
+              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            >
+              <img src={snowcastLogo} alt="" className="brand-logo" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="brand-link brand-wordmark"
               onClick={() => setActiveView('calendar')}
               aria-label="Back to forecast"
             >
-              <img src={snowcastLogo} alt="Snowcast" className="brand-logo" />
               <div className="brand-mark">Snowcast</div>
             </button>
             {resortPicker}
@@ -1659,17 +1674,6 @@ function App() {
 
         <div className="header-actions">
           {showAuthControls ? loginButton : null}
-          <button
-            type="button"
-            className={hamburgerClassName}
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            aria-expanded={mobileMenuOpen}
-            aria-controls="mobile-menu"
-          >
-            <span className="hamburger-bar" />
-            <span className="hamburger-bar" />
-            <span className="hamburger-bar" />
-          </button>
         </div>
       </header>
 
@@ -2271,18 +2275,24 @@ function App() {
               <div className="calendar">
                 <div className="calendar-month">
                   <div className="calendar-title-row">
+                    <button
+                      type="button"
+                      className="weekday-nav month-nav"
+                      onClick={() => handleMonthShift(-1)}
+                      aria-label="Previous month"
+                    >
+                      ‹
+                    </button>
                     <span className="current-month">
                       {displayMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
                     </span>
                     <button
                       type="button"
-                      className="calendar-share"
-                      onClick={handleShareCalendar}
-                      disabled={!selectedLocationId}
-                      aria-label="Share calendar"
-                      title="Share"
+                      className="weekday-nav month-nav"
+                      onClick={() => handleMonthShift(1)}
+                      aria-label="Next month"
                     >
-                      <img className="calendar-share-icon" src={shareIcon} alt="" aria-hidden="true" />
+                      ›
                     </button>
                   </div>
                   <div className="calendar-controls">
@@ -2341,27 +2351,11 @@ function App() {
                   </div>
                 </div>
                 <div className="calendar-weekdays">
-                  <button
-                    type="button"
-                    className="weekday-nav"
-                    onClick={() => handleMonthShift(-1)}
-                    aria-label="Previous month"
-                  >
-                    ‹
-                  </button>
                   {calendar.weeks[0].map((date) => (
                     <div className="weekday-label" key={`weekday-${date.toISOString()}`}>
                       {formatWeekday(date)}
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    className="weekday-nav"
-                    onClick={() => handleMonthShift(1)}
-                    aria-label="Next month"
-                  >
-                    ›
-                  </button>
                 </div>
                 {calendar.weeks.map((week, index) => (
                   <div className="week-block" key={`week-${index}`}>

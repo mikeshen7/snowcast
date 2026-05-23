@@ -86,6 +86,28 @@ async function updateLocationModelFetchTimes(location, modelNames, when = new Da
   }
 }
 
+async function persistMedianForElevations(location, elevations, modelNames, context) {
+  const tasks = (elevations || []).map((elevation) => weatherApi
+    .persistMedianWeatherDocs(location, {
+      elevationKey: elevation.key,
+      elevationFt: elevation.elevationFt,
+      modelNames,
+    })
+    .catch((err) => {
+      console.log(JSON.stringify({
+        event: 'weather_median_persist_error',
+        locationId: String(location._id),
+        name: location.name,
+        context,
+        elevationKey: elevation.key,
+        error: err.message,
+      }));
+      return { count: 0 };
+    }));
+  const results = await Promise.all(tasks);
+  return results.reduce((sum, result) => sum + (result?.count || 0), 0);
+}
+
 // fetchAllWeather iterates every cached location and fetches weather data.
 async function fetchAllWeather(options = {}) {
   const context = options.context || 'forecast';
@@ -118,7 +140,8 @@ async function fetchAllWeather(options = {}) {
       const results = [];
       let errorDetail = null;
       const tasks = [];
-      for (const elevation of weatherApi.listLocationElevations(location)) {
+      const elevations = weatherApi.listLocationElevations(location);
+      for (const elevation of elevations) {
         for (const modelName of locationModels) {
           const modelConfig = modelConfigMap.get(modelName);
           if (!modelConfig) continue;
@@ -154,6 +177,7 @@ async function fetchAllWeather(options = {}) {
         }
       }
       await Promise.all(tasks);
+      await persistMedianForElevations(location, elevations, locationModels, context);
       logBackfillShortfalls(location, results);
       if (errorDetail) {
         logAdminEvent({
@@ -191,11 +215,12 @@ async function fetchAllWeather(options = {}) {
     let errorDetail = null;
     const tasks = [];
     const successfulModels = new Set();
+    const elevations = weatherApi.listLocationElevations(location);
     for (const modelName of locationModels) {
       const modelConfig = modelConfigMap.get(modelName);
       if (!modelConfig) continue;
       if (!shouldFetchLocationModel(location, modelConfig)) continue;
-      for (const elevation of weatherApi.listLocationElevations(location)) {
+      for (const elevation of elevations) {
         const task = weatherApi
           .fetchLocation(location, {
             ...requestOptions,
@@ -229,6 +254,9 @@ async function fetchAllWeather(options = {}) {
       }
     }
     await Promise.all(tasks);
+    if (tasks.length) {
+      await persistMedianForElevations(location, elevations, locationModels, context);
+    }
     if (successfulModels.size) {
       await updateLocationModelFetchTimes(location, Array.from(successfulModels), new Date());
     }
@@ -306,7 +334,8 @@ async function backfillLocations({ locationIds = [] } = {}) {
     const results = [];
     let errorDetail = null;
     const tasks = [];
-    for (const elevation of weatherApi.listLocationElevations(location)) {
+    const elevations = weatherApi.listLocationElevations(location);
+    for (const elevation of elevations) {
       for (const modelName of locationModels) {
         const modelConfig = modelConfigMap.get(modelName);
         if (!modelConfig) continue;
@@ -342,6 +371,7 @@ async function backfillLocations({ locationIds = [] } = {}) {
       }
     }
     await Promise.all(tasks);
+    await persistMedianForElevations(location, elevations, locationModels, 'manual_backfill');
     logBackfillShortfalls(location, results);
     if (errorDetail) {
       logAdminEvent({
@@ -396,12 +426,13 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
     let errorDetail = null;
     const tasks = [];
     const successfulModels = new Set();
+    const elevations = weatherApi.listLocationElevations(location);
     for (const modelName of locationModels) {
       const modelConfig = modelConfigMap.get(modelName);
       if (!modelConfig) continue;
       const shouldFetch = force || shouldFetchLocationModel(location, modelConfig);
       if (!shouldFetch) continue;
-      for (const elevation of weatherApi.listLocationElevations(location)) {
+      for (const elevation of elevations) {
         const task = weatherApi
           .fetchLocation(location, {
             forecastDays: modelConfig.maxForecastDays,
@@ -435,6 +466,9 @@ async function fetchForecastLocations({ locationIds = [], force = false } = {}) 
       }
     }
     await Promise.all(tasks);
+    if (tasks.length) {
+      await persistMedianForElevations(location, elevations, locationModels, 'manual_fetch');
+    }
     if (successfulModels.size) {
       await updateLocationModelFetchTimes(location, Array.from(successfulModels), new Date());
     }

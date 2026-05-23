@@ -80,6 +80,8 @@ CLOUD_DB_URL='mongodb+srv://user:password@example.mongodb.net/' ./scripts/migrat
 
 The script migrates the database named by `DB_NAME` in `.env` and restores it into the local `mongo` service. It uses `--drop`, so existing local collections with the same names are replaced.
 
+Weather storage note: backend fetch/backfill jobs store source Open-Meteo model rows and also materialize the default `median` model into the same hourly weather collection. See `backend/README.md` for the storage/read behavior.
+
 For the `snowcast.mikeshen.dev` tunnel, use this shape in `.env`:
 
 ```env
